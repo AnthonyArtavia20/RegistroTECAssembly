@@ -71,7 +71,8 @@ op1:
     cmp al,27 ;ASCII 27 = ESC
     je Menu
     
-    miNombre db 'Precionado opcion 1: Ingresar calificaciones ',13,10,13,10
+    miNombre db 'Por favor ingrese su estudiante o digite 9 para salir al menu principal',13,10,
+            db 'formato de entrada: -Nombre Apellido1 Apellido2 Nota-',13,10,13,10
             db 'precione ESC para volver a menu$'
         
 op2:
@@ -96,7 +97,7 @@ op2:
     cmp al,27 ;ASCII 27 = ESC
     je Menu
     
-    estadisticas db 'Precionaste opcion 2: mostrar estadisticas',13,10,13,10
+    estadisticas db 'Estadisticas generales del conjunto de estudiantes:',13,10,13,10
             db 'precione ESC para volver a menu$'
 
 op3: 
@@ -122,7 +123,7 @@ op3:
     cmp al,27 ;ASCII 27 = ESC
     je Menu
     
-    buscar db 'Precionado opcion 3: Buscar estudiante por indice ',13,10,13,10
+    buscar db 'Buscar estudiante por indice, Que estudiante desea mostrar? ingrese el indice(posicion)',13,10,13,10
             db 'precione ESC para volver a menu$'
 
 op4:
@@ -147,7 +148,9 @@ op4:
     cmp al,27 ;ASCII 27 = ESC
     je Menu
     
-    Ordenar db 'Precionado opcion 4: Ordenar ',13,10,13,10
+    Ordenar db 'Ordenar notas, Como desea ordenarlas?',13,10,
+            db 'Precione (1) Ascendente',13,10,
+            db '         (2) Descendente ',13,10,13,10
             db 'precione ESC para volver a menu$'
 
 op5: ;salida
