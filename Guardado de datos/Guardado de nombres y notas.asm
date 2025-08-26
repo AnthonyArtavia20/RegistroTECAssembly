@@ -3,23 +3,29 @@
 
 .data 
     ; Mensajes para usuario
-    msg_ingresar db 'Ingrese nombre del estudiante (max 20 caracteres): $'
+    msg_ingresar db 'ingrese datos (Formato: Nombre-Apellido1-Apellido2-Nota): $'
+    msg_formato db 13,10, 'Ejemplo: Juan-Perez-Garcia-85',13,10,'$'
     msg_contador db 13,10, 'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
     msg_continuar db 13,10, 'Presione cualquier tecla para continuar...$'
+    msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
 
     ;Buffer para entrada de nombre
-    buffer db 21 ;maximo 20 caracteres + enter
+    buffer db 51 ;maximo 50 caracteres + enter
             db ? ;espacio para longitud real
-            db 21 dup('$') ;espacio para el nombre
+            db 51 dup('$') ;espacio para el nombre
 
     ;Array para almacenar los 15 nobres
-    estudiantes db 15 dup(20 dup('$')) ;15 estudiantes, cada uno con 20 caracteres
+    nombres db 15 dup(20 dup('$'))  ;Nombres
+    apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
+    apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
+    notas db 15 dup(3 dup('$')) ;Notas 0-100
     
     ;variables de control
     contador db 0
     nueva_linea db 13,10,'$'
+    temp db 0
 
 .code
 main proc 
@@ -27,9 +33,9 @@ main proc
     mov ds, ax
     mov es, ax
 
-    mov cx, 15 ; pedir 15 estudiantes
+    mov bx, 15 ; pedir 15 estudiantes
 
-ingresar_nombres:
+ingresar_datos:
     ;Mostrar mensaje con contador
     mov ah, 09h
     lea dx, msg_contador
@@ -43,18 +49,23 @@ ingresar_nombres:
     lea dx, msg_total
     int 21h
 
-    ;Mostrar mensaje para ingresar nombre
+    ;Mostar mensaje de formato
+    mov ah, 09h
+    lea dx, msg_formato
+    int 21h
+
+    ;Mostrar mensaje para ingresar datos
     mov ah, 09h
     lea dx, msg_ingresar
     int 21h
 
-    ;Pedir nombre
+    ;Pedir datos
     mov ah, 0Ah
     lea dx, buffer
     int 21h
 
-    ; Guardar nombre en el array
-    call guardar_nombre
+    ; Separar y guardar datos
+    call separar_datos
 
     ;Incrementar contador
     inc contador
@@ -64,7 +75,9 @@ ingresar_nombres:
     lea dx, nueva_linea
     int 21h
 
-    loop ingresar_nombres
+    ;Loop principal
+    dec bx
+    jnz ingresar_datos
 
     ;Mostrar mensaje de completado
     mov ah, 09h
@@ -84,42 +97,168 @@ ingresar_nombres:
 
 main endp
 
+;Procedimiento para separar los datos
+separar_datos proc
+    push ax
+    push bx
+    push cx
+    push si
+    push di
+
+    lea si, buffer + 2 ; SI apunta al inicio de los datos
+
+    ; 1. Extraer nombre hasta la primer coma
+    lea di, nombres
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 2. Extraer Apellido 1
+    lea di, apellidos1
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 3.Extraer Apellidos 2
+    lea di, apellidos2
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 4.Extraer Nota
+    lea di, notas
+    mov al, contador
+    mov bl, 3
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    pop di
+    pop si
+    pop cx
+    pop bx
+    pop ax
+    ret
+separar_datos endp
+
+; Proceso para extraer campo
+extraer_campo proc
+    push ax
+    push cx
+    push si
+    push di
+
+    mov cx, 0 ;contador de caracteres
+
+extraer_caracter:
+    mov al, [si]
+    cmp al, ',' ; es coma?
+    je fin_campo
+    cmp al, 13 ; es enter?
+    je fin_campo
+    cmp al, '$'
+    je fin_campo
+
+    mov [di], al ;copiar caracter
+    inc si
+    inc di
+    inc cx
+    jmp extraer_caracter
+
+fin_campo:
+    inc si ;saltar la coma
+    pop di
+    pop si
+    pop cx
+    pop ax
+    ret
+extraer_campo endp
+
 ;Procedimiento para mostrar numero
 mostrar_numero proc
     push ax
     push bx
     push dx
-
-    ; Cargar el contador (solo AL)
-    mov al, contador  
-    inc al            ; numero actual (1-15)
-    mov ah, 0         
     
-    cmp al, 10
+    mov bl, contador
+    add bl, 1     ; numero actual (1-15)
+    
+    ; Para números de un dígito
+    cmp bl, 10
     jb un_digito
-
-    ;Para dos digitos (10-15)
-    mov bl, 10
-    div bl            ; AL = decenas, AH = unidades
-
-    ;imprimir decenas
-    mov dl, al
-    add dl, '0'
-    mov ah, 02h
-    int 21h
-
-    ;imprimir unidades
-    mov dl, ah
-    add dl, '0'
+    
+    ; Para números de dos dígitos - método directo
+    cmp bl, 10
+    je mostrar_10
+    cmp bl, 11
+    je mostrar_11
+    cmp bl, 12
+    je mostrar_12
+    cmp bl, 13
+    je mostrar_13
+    cmp bl, 14
+    je mostrar_14
+    cmp bl, 15
+    je mostrar_15
+    
+un_digito:
+    mov dl, bl
+    add dl, 30h
     mov ah, 02h
     int 21h
     jmp fin_mostrar
 
-;Para un digito (1-9)
-un_digito:
-    mov dl, al
-    add dl, '0'
+mostrar_10:
+    mov dl, '1'
     mov ah, 02h
+    int 21h
+    mov dl, '0'
+    int 21h
+    jmp fin_mostrar
+
+mostrar_11:
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '1'
+    int 21h
+    jmp fin_mostrar
+
+mostrar_12:
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '2'
+    int 21h
+    jmp fin_mostrar
+
+mostrar_13:
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '3'
+    int 21h
+    jmp fin_mostrar
+
+mostrar_14:
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '4'
+    int 21h
+    jmp fin_mostrar
+
+mostrar_15:
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '5'
     int 21h
 
 fin_mostrar:
@@ -128,50 +267,6 @@ fin_mostrar:
     pop ax
     ret
 mostrar_numero endp
-
-;Procedimiento para guardar nombres en el array
-guardar_nombre proc
-    pusha
-    push cx
-
-    ;calcular posicion en el array
-    mov al, contador
-    mov ah, 0
-    mov bl, 20
-    mul bl
-    lea si, estudiantes
-    add si, ax ;SI apunta a la posicion correcta
-
-    ;copiar nombre del buffer al array
-    lea di, buffer + 2 ;DI apunta al inicio del nombre ingresado
-    mov cl, [buffer+1] ;CL = longitud del nombre
-    mov ch, 0
-
-    cmp cl, 0
-    je fin_copia
-
-    ;Limpiar la posicion actual primero
-    push cx
-    push di
-    mov cx, 20
-    mov al, '$'
-    mov di, si
-    rep stosb
-    pop di
-    pop cx
-
-copiar_caracter:
-    mov al, [di]
-    mov [si], al
-    inc di
-    inc si
-    loop copiar_caracter
-
-fin_copia:
-    pop cx
-    popa
-    ret
-guardar_nombre endp
 
 end main
      
