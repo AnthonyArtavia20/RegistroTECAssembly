@@ -71,42 +71,42 @@ PILA ENDS
 
 Menu:
     mov ah,0
-        mov al,3h ;Modo texto
-        int 10h
+    mov al,3h ;Modo texto
+    int 10h
 
-        mov ax,0600h ;Limpiar pantalla
-        mov bh,0fh; 0 Color de fondo negro, f color de letra color blanco
-        mov cx,0000h
-        mov dx,184Fh
-        int 10h
+    mov ax,0600h ;Limpiar pantalla
+    mov bh,0fh; 0 Color de fondo negro, f color de letra color blanco
+    mov cx,0000h
+    mov dx,184Fh
+    int 10h
 
-        mov ah,02h
-        mov bh,00
-        mov dh,00
-        mov dl,00
-        int 10h
+    mov ah,02h
+    mov bh,00
+    mov dh,00
+    mov dl,00
+    int 10h
 
-        mov dx, offset mostrarMenu ;nombre del mensaje
-        mov ah,09
-        int 21h
+    mov dx, offset mostrarMenu ;nombre del mensaje
+    mov ah,09
+    int 21h
 
-        mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
-        int 21h
+    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
+    int 21h
 
-        cmp al,49 ;compara con opcion 1 Ingresar calificaciones, compara en ASCII, 49 es 1
-        je op1  ; salto condicional, salta .
+    cmp al,49 ;compara con opcion 1 Ingresar calificaciones, compara en ASCII, 49 es 1
+    je op1  ; salto condicional, salta .
 
-        cmp al,50 ;compara con opcion 2 mostrar estadisticas
-        je op2
+    cmp al,50 ;compara con opcion 2 mostrar estadisticas
+    je op2
 
-        cmp al,51 ;compara con opcion 3 buscar estudiante por indice
-        je op3
+    cmp al,51 ;compara con opcion 3 buscar estudiante por indice
+    je op3
 
-        cmp al,52 ;compara con opcion 4 ordenar calificaciones(desc/asce)
-        je op4
+    cmp al,52 ;compara con opcion 4 ordenar calificaciones(desc/asce)
+    je op4
 
-        cmp al,53 ;compara con opcion 5 salir
-        je op5
+    cmp al,53 ;compara con opcion 5 salir
+    je op5
 
 op1:
     mov ax,0600h ;limpiar pantalla
@@ -238,6 +238,10 @@ op3:
     jmp Menu
 
 op4:
+    mov ah,0
+    mov al,3h ;Modo texto
+    int 10h
+
     mov ax,0600h ;Función 06h de int 10 - limpiar pantalla con desplazamiento para arriba
     mov bh, 1eh ;1 fondo azul, e color de letra amarilla
     mov cx,0000h ;Coordenada superior izquierda, Fila,columna (0,0)
@@ -254,46 +258,91 @@ op4:
     mov ah,09 ;Función 09h de int 21h: Imprimir strings por pantalla, byte a byte
     int 21h ;se muestra el mensajes
 
-    ; Configurar segmentos
-    PUSH DS
-    MOV AX, data ;todo el segmento de datos cargado en AX
-    MOV DS, AX ;DS = segmento de datos
-    MOV ES, AX  ;para copias
+    ;determinar si se va a ordenar ascente o ascendente, primero obtener la eleccion del usuario por consola
+    mov ah,01h ;pausa hasta que el usuario escriba algo y captura de datos
+    int 21h
 
-    ;----------Codigo principal del BubbleSort aqui:----------------------------
+    cmp al, 49 ;compara con 1
+    je BubbleAscendente
 
+    cmp al, 50 ;compara con 1
+    je BubbleDescendente
+
+        ;----------Codigo principal del BubbleSort aqui:----------------------------
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
-    ; Ciclo externo
-    mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
-    dec cl ;cl-1, es decir numero de pasadas necesarias.
-    jz fin_sort ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
+    BubbleAscendente:
+        ; Configurar segmentos
+        PUSH DS
+        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV DS, AX ;DS = segmento de datos
+        MOV ES, AX  ;para copias
 
-CICLO_EXTERNO:
-    lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
-    mov ch, 0 ; CH = 0 deja limpio el registro.
-    mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
+        ; Ciclo externo
+        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
+        dec cl ;cl-1, es decir numero de pasadas necesarias.
+        jz fin_sort ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
 
-CICLO_INTERNO:
-    mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
-    mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
-    cmp al, dl ;aca es cuando se compara y se decide.
-    JBE NO_SWAP ;Si AL <= DL entonces no se haec swap...
-    mov [si], dl ; Si AL >= DL entonces en nota[i] se pone el valor mayor
-    mov [si+1], al ; y en nota[i+1] pones el valor menor.
-NO_SWAP:
-    inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
-    dec bl ;y se decrementa BL para hacer una compración menos
-    jnz CICLO_INTERNO ; Si BL distinto de 0, sigue comparando.
+        CICLO_EXTERNO:
+            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
+            mov ch, 0 ; CH = 0 deja limpio el registro.
+            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
 
-    dec cl ;una pasada menos
-    jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
-fin_sort:
-    MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
-    
-    ;------------------------------------------------
+        CICLO_INTERNO:
+            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
+            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
+            cmp al, dl ;aca es cuando se compara y se decide.
+            JBE NO_SWAP ;Si AL <= DL entonces no se haec swap...
+            mov [si], dl ; Si AL >= DL entonces en nota[i] se pone el valor mayor
+            mov [si+1], al ; y en nota[i+1] pones el valor menor.
+        NO_SWAP:
+            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
+            dec bl ;y se decrementa BL para hacer una compración menos
+            jnz CICLO_INTERNO ; Si BL distinto de 0, sigue comparando.
 
-    
+            dec cl ;una pasada menos
+            jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
+        fin_sort:
+            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
+
+            jmp salir ;Para que no siga con el codigo de Descendente
+
+    BubbleDescendente:
+        ; Configurar segmentos
+        PUSH DS
+        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV DS, AX ;DS = segmento de datos
+        MOV ES, AX  ;para copias
+
+        ; Ciclo externo
+        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
+        dec cl ;cl-1, es decir numero de pasadas necesarias.
+        jz fin_sortDescen ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
+
+        CICLO_EXTERNODescen:
+            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
+            mov ch, 0 ; CH = 0 deja limpio el registro.
+            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
+
+        CICLO_INTERNODescen:
+            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
+            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
+            cmp al, dl ;aca es cuando se compara y se decide.
+            JAE NO_SWAPDescen ;“Jump if Above or Equal” = si AL ≥ DL entonces ya está en orden descendente → no swap..
+            mov [si], dl ; Si AL < DL → sí hay swap, porque en descendente queremos que el mayor quede primero.
+            mov [si+1], al ; y en nota[i+1] pones el valor menor.
+        NO_SWAPDescen:
+            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
+            dec bl ;y se decrementa BL para hacer una compración menos
+            jnz CICLO_INTERNODescen ; Si BL distinto de 0, sigue comparando.
+
+            dec cl ;una pasada menos
+            jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
+        fin_sortDescen:
+            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
+
+        salir: ;para que pueda seguir con la impresión de notas.
+
 ;--------Inicio impresion de notas----
     MOV SI, offset notas
     MOV CL, contador
