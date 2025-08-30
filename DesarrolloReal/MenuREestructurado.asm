@@ -294,50 +294,23 @@ fin_sort:
     MOV AX, 4C00h
     
     ;---- Imprimir notas ordenadas ----
-    MOV SI, offset notas   ; apuntar al inicio del arreglo de notas
-    MOV AL, contador       ; n�mero de estudiantes
-    MOV CL, AL             ; contador de bucle
-
-    MOV SI, offset notas
+MOV SI, offset notas
 MOV CL, contador
 
 imprimir_notas_loop:
     MOV AL, [SI]
-    MOV AH, 0
-    CMP AL, 100
-    JNE menor100
-    ; imprimir 100
-    MOV DL,'1'
-    MOV AH, 02h
-    INT 21h
-    MOV DL,'0'
-    INT 21h
-    MOV DL,'0'
-    INT 21h
-    JMP next_note
-menor100:
-    MOV BL,10
-    DIV BL
-    ADD AL,'0'
-    MOV DL,AL
-    MOV AH,02h
-    INT 21h
-    MOV DL,AH
-    ADD DL,'0'
-    MOV AH,02h
-    INT 21h
-next_note:
+    CALL print_decimal
     INC SI
-    MOV DL,' '
-    MOV AH,02h
+    MOV DL, ' '
+    MOV AH, 02h
     INT 21h
     LOOP imprimir_notas_loop
 
-; Nueva línea
-MOV DL,13
-MOV AH,02h
+; Salto de línea
+MOV DL, 13
+MOV AH, 02h
 INT 21h
-MOV DL,10
+MOV DL, 10
 INT 21h
 
 ;--------Fin impresion de notas----
@@ -527,16 +500,15 @@ mostrar_numero endp
 extraer_nota proc
     push ax
     push bx
-    push dx
+    push cx
     push si
     push di
 
     lea si, buffer + 2
-    ; Mover SI hasta la última '-' (nota)
-    mov al, [buffer+1] ; longitud real (1 byte)
-    mov cl, al         ; pasamos a CL para usarlo
+    mov cl, [buffer+1]   ; longitud de cadena
     add si, cx
-    dec si
+    dec si                ; apuntar al último caracter antes del Enter
+
     ; retrocedemos hasta el '-'
 retroceder:
     cmp byte ptr [si], '-'
@@ -545,35 +517,63 @@ retroceder:
     jmp retroceder
 
 inicio_parse:
-    inc si ; apuntar al primer dígito de la nota
-    mov bl, 0 ; acumulador
-
+    inc si               ; apuntar al primer dígito de la nota
+xor bx, bx         ; acumulador
 parse_loop:
     mov al, [si]
     cmp al, 13
     je fin_parse
     cmp al, '$'
     je fin_parse
-    sub al, '0'
-    mov bh, 0
-    mov bl, bl
-    mov ax, bx
-    mov dx, 10
-    mul dx
-    add ax, ax
-    add bl, al
+    sub al, '0'      ; ASCII -> dígito
+    mov ah, 0
+    mov cx, bx       ; guardar acumulador en CX
+    mov bx, ax       ; BX = dígito por ahora
+    mov ax, cx
+    mov cx, 10
+    mul cx           ; AX = acumulador*10
+    add bx, ax       ; BX = acumulador*10 + dígito actual
     inc si
     jmp parse_loop
-
 fin_parse:
     mov [di], bl
 
     pop di
     pop si
-    pop dx
+    pop cx
     pop bx
     pop ax
     ret
 extraer_nota endp
+
+; Entrada: AL = número 0–99
+; Sale: imprime el número en pantalla
+
+print_decimal proc
+    push ax
+    push dx
+
+    mov al, [SI]    ; o el valor que quieras imprimir
+    xor ah, ah
+    mov bl, 10
+    div bl          ; AL = decenas, AH = unidades
+
+    cmp al, 0
+    je print_unit
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+print_unit:
+    add ah, '0'     ; AH = residuo → unidad
+    mov dl, ah
+    mov ah, 02h
+    int 21h
+
+    pop dx
+    pop ax
+    ret
+print_decimal endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
