@@ -16,18 +16,28 @@
 
 
     ; Mensajes para usuario en el apartado dentro de opcion1
-    miNombre db 'Por favor ingrese su estudiante o precione ESC para volver a menu$',13,10,
+    miNombre db 'Por favor ingrese su estudiante o precione ESC para volver a menu',13,10,
                 db 'formato de entrada: -Nombre Apellido1 Apellido2 Nota-',13,10,13,10,'$'
 
     ;logica de Alexs para el ingresado de datos ---start---
-    msg_ingresar db 'ingrese datos (Formato: Nombre-Apellido1-Apellido2-Nota): $'
-    msg_formato db 13,10, 'Ejemplo: Juan-Perez-Garcia-85',13,10,'$'
+    msg_ingresar db 'ingrese datos (Formato: Nombre Apellido1 Apellido2 Nota): $'
+    msg_formato db 13,10, 'Ejemplo: Juan Perez Garcia 85',13,10,'$'
     msg_contador db 13,10, 'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
     msg_continuar db 13,10, 'Presione cualquier tecla para continuar...$'
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
+    ; Mensajes para las validaciones
+    msg_err_campos db 13,10, 'Error: Debe ingresar 4 campos (Nombre Apellido1 Apellido2 Nota).' ,13,10, '$'
+    msg_err_letras db 13,10, 'Error: Nombre/Apellidos solo deben contener letras (A-Z).' ,13,10, '$'
+    msg_err_nota db 13,10, 'Error: La nota debe ser numerica entre 0 y 100.' ,13,10, '$'
+    msg_err_largo db 13,10, 'Error: Un campo excede el tamaño permitido.' ,13,10, '$'
+    msg_err_extra db 13,10, 'Error: Hay campos de mas. Solo 4 campos son permitidos.' ,13,10, '$'
+
+    ; Bandera general para rutinas (0 = ok /  != 0 error )
+    flag_error db 0
+
     ;Buffer para entrada de nombre
     buffer db 51 ;maximo 50 caracteres + enter
             db ? ;espacio para longitud real
@@ -154,13 +164,28 @@ op1:
         ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
         mov si, offset buffer
         mov cl, [si+1]              ; longitud real
+
+        cmp cl, 0
+        je volver_menu_op1
+
+        xor ch, ch
+
         mov byte ptr [si+2+cx], '$' ; sustituir el Enter por fin de cadena
 
-        ;Separar y guardar datos
-        call separar_datos
+       ;ESC permitico con o sin espacios iniciales
+       lea si, buffer+2
+       call saltar_espacios
+       mov al, [si]
+       cmp al, 27
+       je volver_menu_op1
 
-        ;Incrementar contador
-        inc contador
+       ; Validar y guardar
+       call validar_y_guardar
+       cmp flag_error, 0
+       jne entrada_invalida
+
+       ; Si todo esta bien, avanzamos con el siguiente estudiante
+       inc contador        
 
         ;Nueva linea
         mov ah, 09h
@@ -170,17 +195,32 @@ op1:
         ;Loop principal
         dec bx
         jnz ingresar_dato_op1Loop
+        jmp fin_captura_op1
 
-        ;Mostrar mensaje de completado
-        mov ah, 09h
-        lea dx, msg_completado
-        int 21h
+    entrada_invalida:
+        ;Mostrar "Presoine cualquier tecla..." y reintentar mismo indiceestudiante
 
         ;Esperar tecla para continuar
         mov ah, 09h
         lea dx, msg_continuar
         int 21h
         mov ah, 01h
+        int 21h
+
+        ;Nueva linea
+        mov ah, 09h
+        lea dx, nueva_linea
+        int 21h
+
+        jmp ingresar_dato_op1Loop
+
+    volver_menu_op1:
+     jmp Menu
+
+    fin_captura_op1:
+        ;Mostrar mensaje de completado
+        mov ah, 09h
+        lea dx, msg_completado
         int 21h
 
 
@@ -269,87 +309,389 @@ op5: ;salida
     main endp ; Con este cierra el procedimiento(funcion) principal, o loop principal.
 
 ;Apartir de aca se ponen los procedimientos auxiliares o funciones auxiliares.
-separar_datos proc
+
+saltar_espacios proc
+    push ax
+
+saltar_espacios_loop:
+    mov al, [si]
+    cmp al, ' '
+    jne saltar_espacios_salir
+    inc si
+    jmp saltar_espacios_loop
+
+saltar_espacios_salir:
+    pop ax
+    ret
+
+saltar_espacios endp
+
+checar_letra proc ;Revisamos si el caracter es A/Z o minus
+    push ax
+    mov ah, al
+    ; 'A'..'Z'
+    cmp al, 'A'
+    jb no_mayus
+    cmp al, 'Z'
+    jbe checar_letra_true
+
+no_mayus:
+    mov al, ah
+    cmp al, 'a'
+    jb checar_letra_false
+    cmp al, 'z'
+    jbe checar_letra_true
+
+checar_letra_false:
+    mov al, 1
+    pop ax
+    ret
+
+checar_letra_true:
+    mov al, ah
+    cmp al, al ;Comparamos a AL consigo mismo
+    pop ax
+    ret
+
+checar_letra endp
+
+imprimir_mensaje proc near
+    mov ah, 09h
+    int 21h
+    ret
+imprimir_mensaje endp
+
+agregar_dolar proc ; Rellena hasta longitud fija con '$'
+    push ax
+
+    agregar_dolar_loop:
+    cmp cx, 0
+    je agregar_dolar_salir
+    mov byte ptr [di], '$'
+    inc di
+    dec cx
+    jmp agregar_dolar_loop
+
+agregar_dolar_salir:
+    pop ax
+    ret
+
+agregar_dolar endp
+
+; Convierte AX a ASCII EN DI, max 3 chars, rellena con '$' si sobra 
+
+cambio_de_nota_a_ascii proc
     push ax
     push bx
     push cx
+    push dx
+
+    mov bx, 10
+    xor cx, cx
+
+    cmp ax, 0
+    jne CNAA_no_es_cero
+    mov byte ptr [di], '0'
+    inc di
+    mov cx, 1
+    jmp CNAA_nota_checada
+
+    CNAA_no_es_cero:
+
+    CNAA_loop_division:
+        xor dx, dx
+        div bx
+        push dx
+        inc cx
+        cmp ax, 0
+        jne CNAA_loop_division
+        ;volcar en orden
+
+    CNAA_pop_loop:
+        pop dx
+        add dl, '0'
+        mov [di], dl
+        inc di
+        loop CNAA_pop_loop
+
+    CNAA_nota_checada:
+     ; Rellenamos con '$' hasta 3
+     mov bx, 3
+     sub bx, cx
+     mov cx, bx
+
+    CNAA_pad:
+    cmp cx, 0
+    je CNAA_salir
+    mov byte ptr [di], '$'
+    inc di
+    dec cx
+    jmp CNAA_pad
+
+    CNAA_salir:
+        pop dx
+        pop cx
+        pop bx
+        pop ax
+        ret
+
+cambio_de_nota_a_ascii endp
+
+;Comprobamos palabras
+
+leer_palabra_validada proc
+    push ax
+    push bx
+    push cx
+    push di
+
+    mov flag_error, 0
+    call saltar_espacios
+
+    xor cx, cx ;longitud
+
+leer_palabra_validada_loop:
+    mov al, [si]
+    cmp al, ' '
+    je leer_palabra_validada_fin
+    cmp al, 13
+    je leer_palabra_validada_fin
+    cmp al, '$'
+    je leer_palabra_validada_fin
+
+    ; Validamos la letra
+    push ax
+    call checar_letra
+    jz leer_palabra_validada_okchar
+
+    ; no es letra
+    lea dx, msg_err_letras
+    call imprimir_mensaje
+    mov flag_error, 1
+    pop ax
+    jmp leer_palabra_validada_error
+
+leer_palabra_validada_okchar:
+    pop ax
+
+    ;Longitud max
+    cmp cx, bx
+    jb leer_palabra_validada_guardada
+
+    ;excede
+    lea dx, msg_err_largo
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp leer_palabra_validada_error
+
+leer_palabra_validada_guardada:
+    mov [di], al
+    inc di
+    inc si
+    inc cx
+    jmp leer_palabra_validada_loop
+
+leer_palabra_validada_fin:
+    ; No vacio?
+    cmp cx, 0
+    jne leer_palabra_validada_pad
+    lea dx, msg_err_campos
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp leer_palabra_validada_error
+
+
+leer_palabra_validada_pad:
+    ;Rellnamos con '$' hasta BL
+    mov ax, bx
+    sub ax, cx
+    mov cx, ax
+    call agregar_dolar
+
+leer_palabra_validada_salir:
+    pop di
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+leer_palabra_validada_error:
+    ;Saltar restos hasta espacio o fin para no trabajarse
+    mov al, [si]
+    cmp al, ' '
+    je leer_palabra_validada_salir
+    cmp al, 13
+    je leer_palabra_validada_salir
+    cmp al, '$'
+    je leer_palabra_validada_salir
+    inc si
+    jmp leer_palabra_validada_error
+
+leer_palabra_validada endp
+
+leer_nota_validada proc
+    push ax
+    push bx
+    push cx
+    push di
+
+    mov flag_error, 0
+    call saltar_espacios
+
+    xor cx, cx
+    xor ax, ax
+
+leer_nota_validada_loop:
+    mov bl, [si]
+    cmp bl, '0'
+    jb leer_nota_validada_fin
+    cmp bl, '9'
+    ja leer_nota_validada_fin
+
+    ;es digito
+    cmp cx, 3
+    jb leer_nota_validada_accum
+
+    ;demasiados digitos
+    lea dx, msg_err_nota
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp leer_nota_validada_error
+
+leer_nota_validada_accum:
+    ; valor = valor*10 + (bl- '0')
+    mov bx, 10
+    mul bx
+    mov dl, [si]
+    sub dl, '0'
+    xor dh, dh
+    add ax, dx
+
+    inc si
+    inc cx
+    jmp leer_nota_validada_loop
+
+leer_nota_validada_fin:
+    ; no se leyo ningun dato?
+    cmp cx, 0
+    jne leer_nota_validada_rango
+    lea dx, msg_err_nota
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp leer_nota_validada_error
+
+leer_nota_validada_rango:
+    cmp ax, 100
+    jbe leer_nota_validada_escribir
+    lea dx, msg_err_nota
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp leer_nota_validada_error
+
+leer_nota_validada_escribir:
+    ;AX a ascii en DI + padding '$'
+    call cambio_de_nota_a_ascii
+    jmp leer_nota_validada_salir
+
+leer_nota_validada_error:
+    ;limpiar destino
+    mov cx, 3
+    call agregar_dolar
+
+leer_nota_validada_salir:
+    pop di
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+leer_nota_validada endp
+
+;Guardado de datos con validacion
+
+validar_y_guardar proc
+    push ax
+    push bx
     push si
     push di
 
-    lea si, buffer + 2 ; SI apunta al inicio de los datos
+    mov flag_error, 0
 
-    ; 1. Extraer nombre hasta la primer coma
+    ; 1) Nombre 
     lea di, nombres
     mov al, contador
-    mov bl, 20
+    mov bl, 20  
     mul bl
     add di, ax
-    call extraer_campo
+    mov bx, 20
+    call leer_palabra_validada
+    cmp flag_error, 0
+    jne validar_y_guardar_fallo
 
-    ; 2. Extraer Apellido 1
+    ; 2) Apellido1
     lea di, apellidos1
     mov al, contador
     mov bl, 20
     mul bl
     add di, ax
-    call extraer_campo
+    mov bx, 20
+    call leer_palabra_validada
+    cmp flag_error, 0
+    jne validar_y_guardar_fallo
 
-    ; 3.Extraer Apellidos 2
+    ; 3) Apellido2
     lea di, apellidos2
     mov al, contador
     mov bl, 20
     mul bl
     add di, ax
-    call extraer_campo
+    mov bx, 20
+    call leer_palabra_validada
+    cmp flag_error, 0
+    jne validar_y_guardar_fallo
 
-    ; 4.Extraer Nota
+    ; 4) Nota
     lea di, notas
     mov al, contador
     mov bl, 3
     mul bl
     add di, ax
-    call extraer_campo
+    mov bx, 3
+    call leer_nota_validada
+    cmp flag_error, 0
+    jne validar_y_guardar_fallo
 
+    ;Verificar que no haya campos extra
+    call saltar_espacios
+    mov al, [si]
+    cmp al, 13
+    je validar_y_guardar_ok
+    cmp al, '$'
+    je validar_y_guardar_ok
+
+    ;hay mas texto? = error
+    lea dx, msg_err_extra
+    call imprimir_mensaje
+    mov flag_error, 1
+    jmp validar_y_guardar_fallo
+
+    validar_y_guardar_ok:
+    ;todo ok
     pop di
     pop si
-    pop cx
     pop bx
     pop ax
     ret
-separar_datos endp
 
-; Proceso para extraer campo
-extraer_campo proc
-    push ax
-    push cx
-    push si
-    push di
-
-    mov cx, 0 ;contador de caracteres
-
-extraer_caracter:
-    mov al, [si]
-    cmp al, ',' ; es coma?
-    je fin_campo
-    cmp al, 13 ; es enter?
-    je fin_campo
-    cmp al, '$'
-    je fin_campo
-
-    mov [di], al ;copiar caracter
-    inc si
-    inc di
-    inc cx
-    jmp extraer_caracter
-
-fin_campo:
-    inc si ;saltar la coma
+    validar_y_guardar_fallo:
+    ;Si falto algo por si acaso
     pop di
     pop si
-    pop cx
+    pop bx
     pop ax
     ret
-extraer_campo endp
+
+validar_y_guardar endp
 
 ;Procedimiento para mostrar numero
 mostrar_numero proc
@@ -438,7 +780,46 @@ fin_mostrar:
     pop ax
     ret
 mostrar_numero endp
+;#######################################################################################################################
+; Cuenta tokens (palabras separadas por espacios) hasta 13 o '$'
+; ENTRADA: SI = puntero a inicio del texto (buffer+2)
+; SALIDA:  AL = cantidad de tokens (0..n), SI queda al final del scan
+contar_campos proc
+    push cx
+    push dx
 
+    xor al, al                ; contador = 0
+    call saltar_espacios
+
+cc_loop:
+    mov dl, [si]
+    cmp dl, '$'
+    je  cc_ret
+    cmp dl, 13
+    je  cc_ret
+    ; estamos al inicio de un token
+    inc al
+    ; saltar token hasta espacio/fin
+cc_tok:
+    mov dl, [si]
+    cmp dl, ' '
+    je  cc_skip
+    cmp dl, 13
+    je  cc_ret
+    cmp dl, '$'
+    je  cc_ret
+    inc si
+    jmp cc_tok
+
+cc_skip:
+    call saltar_espacios
+    jmp cc_loop
+
+cc_ret:
+    pop dx
+    pop cx
+    ret
+contar_campos endp
 
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
