@@ -36,7 +36,7 @@
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas db 15 dup(3 dup('$')) ;Notas 0-100
+    notas db 15 dup(0) ;Notas 0-100, 1 byte por nota
     
     ;variables de control
     contador db 0
@@ -264,49 +264,32 @@ op4:
 
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
-    ;Ciclo externo: Tantas veces como cantidad de estudiantes -1
-    MOV AX, 0  ;Limpiar AX
-    MOV AL, contador ; tamaño de la lista = numero de estudiantes
-    CMP AL,0
-    JE Menu ;Si no hay estudiantes en la lista, regresa al menu
-    MOV AH, 0 ;Limpiar la parte alta de AX
-    MOV CX, AX ; CX = numero de estudiantes -1
-    DEC CX ; porque el bubbleSort externo hace comparaciones hasta n-1
-    
-    ; validar CX para evitar underflow
-    CMP CX,0
-    JL Menu       ; si CX < 0, volver al menu
+    ; Ciclo externo
+    mov cl, contador
+    dec cl
+    jz fin_sort
 
-    CICLO1:
-    PUSH CX ;Pone en la pila el valor de CX, guardar contador externo
-    LEA SI, notas ; SI apunta al inicio del arreglo
-    MOV DI,SI ;Luego pasarla a D1, Variable temporal, porque nesesitamos otro indice para comparar el siguiente. 
+CICLO_EXTERNO:
+    lea si, notas
+    mov ch, 0
+    mov bl, cl
 
-    ; Ciclo interno: comparaciones por pasada
-    MOV DX, AX           ; DX = total de estudiantes
-    DEC DX               ; DX = estudiantes - 1 (comparaciones)
+CICLO_INTERNO:
+    mov al, [si]
+    mov dl, [si+1]
+    cmp al, dl
+    JBE NO_SWAP
+    mov [si], dl
+    mov [si+1], al
+NO_SWAP:
+    inc si
+    dec bl
+    jnz CICLO_INTERNO
 
-    CICLO2:       
-    INC DI ;Para poder incrementarle 1 a esa segunda variable y así poder comparar.
-    MOV AL, [SI] ;Pasar ek valor que se encuentra en la dirección de SI a AL
-    CMP AL, [DI] ;se compara con DI puesto que esta es la que apunta al siguiente indice, se le habia incrementado 1
-    JA INTERCAMBIO ;Salta a la etiqueta si es mayor
-    JB MENOR ;Short Jump si el primer operando esta por debajo del segundo operando, sin signo.
+    dec cl
+    jnz CICLO_EXTERNO
+fin_sort:
 
-    INTERCAMBIO:
-    MOV AH, [DI] ; Mueve el valor que se encuentra en DI a AH
-    MOV [DI], AL ;Swap mueve el segundo numero para donde esta el primero
-    MOV [SI], AH ;Pasa el valor de AH a la posicion de SI
-
-    MENOR:
-    INC SI
-    DEC DX
-    JNZ CICLO2           ; ciclo interno
-
-    POP CX               ; restaurar externo
-    DEC CX
-    JNZ CICLO1           ; ciclo externo
-    ;Esto de arriba es como un ciclo anidado 
     ;------------------------------------------------
     MOV AX, 4C00h
     
@@ -315,27 +298,48 @@ op4:
     MOV AL, contador       ; n�mero de estudiantes
     MOV CL, AL             ; contador de bucle
 
-    imprimir_notas_loop:
-        MOV AL, [SI]   ; nota (0-99)
-        MOV AH, 0
-        MOV BL, 10
-        DIV BL         ; AL = cociente (decenas), AH = residuo (unidades)
-        ADD AL, '0'
-        MOV DL, AL
-        MOV AH, 02h
-        INT 21h        ; imprime decena
-        MOV DL, AH
-        ADD DL, '0'
-        MOV AH, 02h
-        INT 21h        ; imprime unidad
+    MOV SI, offset notas
+MOV CL, contador
 
-        ; imprimir espacio
-        MOV DL, ' '
-        MOV AH, 02h
-        INT 21h
-    
-        INC SI
-        LOOP imprimir_notas_loop 
+imprimir_notas_loop:
+    MOV AL, [SI]
+    MOV AH, 0
+    CMP AL, 100
+    JNE menor100
+    ; imprimir 100
+    MOV DL,'1'
+    MOV AH, 02h
+    INT 21h
+    MOV DL,'0'
+    INT 21h
+    MOV DL,'0'
+    INT 21h
+    JMP next_note
+menor100:
+    MOV BL,10
+    DIV BL
+    ADD AL,'0'
+    MOV DL,AL
+    MOV AH,02h
+    INT 21h
+    MOV DL,AH
+    ADD DL,'0'
+    MOV AH,02h
+    INT 21h
+next_note:
+    INC SI
+    MOV DL,' '
+    MOV AH,02h
+    INT 21h
+    LOOP imprimir_notas_loop
+
+; Nueva línea
+MOV DL,13
+MOV AH,02h
+INT 21h
+MOV DL,10
+INT 21h
+
 ;--------Fin impresion de notas----
         
 mov ah,08 ;pausa y captura de datos
@@ -388,10 +392,8 @@ separar_datos proc
     ; 4.Extraer Nota
     lea di, notas
     mov al, contador
-    mov bl, 3
-    mul bl
-    add di, ax
-    call extraer_campo
+    add di, ax        ; cada nota ocupa 1 byte
+    call extraer_nota ; convertimos ASCII a número y guardamos en [di]
 
     pop di
     pop si
@@ -522,6 +524,56 @@ fin_mostrar:
     ret
 mostrar_numero endp
 
+extraer_nota proc
+    push ax
+    push bx
+    push dx
+    push si
+    push di
 
+    lea si, buffer + 2
+    ; Mover SI hasta la última '-' (nota)
+    mov al, [buffer+1] ; longitud real (1 byte)
+    mov cl, al         ; pasamos a CL para usarlo
+    add si, cx
+    dec si
+    ; retrocedemos hasta el '-'
+retroceder:
+    cmp byte ptr [si], '-'
+    je inicio_parse
+    dec si
+    jmp retroceder
+
+inicio_parse:
+    inc si ; apuntar al primer dígito de la nota
+    mov bl, 0 ; acumulador
+
+parse_loop:
+    mov al, [si]
+    cmp al, 13
+    je fin_parse
+    cmp al, '$'
+    je fin_parse
+    sub al, '0'
+    mov bh, 0
+    mov bl, bl
+    mov ax, bx
+    mov dx, 10
+    mul dx
+    add ax, ax
+    add bl, al
+    inc si
+    jmp parse_loop
+
+fin_parse:
+    mov [di], bl
+
+    pop di
+    pop si
+    pop dx
+    pop bx
+    pop ax
+    ret
+extraer_nota endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
