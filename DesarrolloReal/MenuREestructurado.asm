@@ -25,7 +25,6 @@
     msg_contador db 13,10, 'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
-    msg_continuar db 13,10, 'Presione cualquier tecla para continuar...$'
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
     ;Buffer para entrada de nombre
@@ -59,10 +58,16 @@
             db 'Precione (1) Ascendente',13,10,
             db '         (2) Descendente ',13,10,13,10,
             db 'precione ESC para volver a menu$',13,10,'$'
+
+PILA SEGMENT
+    DB 64 DUP(0)
+PILA ENDS
+
 .code
     main proc
     mov ax, @data 
     mov ds, ax
+    ASSUME CS:code, DS:data, SS:PILA
 
 Menu:
     mov ah,0
@@ -123,6 +128,7 @@ op1:
     ;Codigo de Alex de ingresado y guardado de datos:
     mov bx, 15 ; pedir 15 estudiantes
     ingresar_dato_op1Loop:
+
         ;Mostrar mensaje con contador
         mov ah, 09h
         lea dx, msg_contador
@@ -147,9 +153,14 @@ op1:
         int 21h
 
         ;Pedir datos
-        mov ah, 0Ah ;pausa y captura de datos
+        mov ah, 0Ah ;pausa y captura de dato
         lea dx, buffer
         int 21h
+
+        ; Revisar si el primer caracter ingresado fue ESC (27) para poder salir del bucle en cualquier momento
+        mov al, [buffer+2]   ; el primer caracter real
+        cmp al, 27
+        je Menu              ; si fue ESC, saltar al menú
         
         ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
         mov si, offset buffer
@@ -176,18 +187,6 @@ op1:
         lea dx, msg_completado
         int 21h
 
-        ;Esperar tecla para continuar
-        mov ah, 09h
-        lea dx, msg_continuar
-        int 21h
-        mov ah, 01h
-        int 21h
-
-
-    cmp al,27 ;ASCII 27 = ESC
-    je Menu
-
-    jmp Menu ;Furza el regreso al menú siempre
 
 op2:
     mov ax,0600h ;limpiar pantalla
@@ -254,13 +253,97 @@ op4:
     mov dx, offset Ordenar
     mov ah,09
     int 21h
-    
-    mov ah,08 ;pausa y captura de datos
-    int 21h
-    cmp al,27 ;ASCII 27 = ESC
-    je Menu
 
-    jmp Menu
+    ; Configurar segmentos
+    PUSH DS
+    MOV AX, data
+    MOV DS, AX
+    MOV ES, AX
+
+    ;----------Codigo principal del desarrollo aqui:----------------------------
+
+    ;Se neesitan hacer comparacion e intercambio de posiciones
+    
+    ;Ciclo externo: Tantas veces como cantidad de estudiantes -1
+    MOV AX, 0  ;Limpiar AX
+    MOV AL, contador ; tamaño de la lista = numero de estudiantes
+    CMP AL,0
+    JE Menu ;Si no hay estudiantes en la lista, regresa al menu
+    MOV AH, 0 ;Limpiar la parte alta de AX
+    MOV CX, AX ; CX = numero de estudiantes -1
+    DEC CX ; porque el bubbleSort externo hace comparaciones hasta n-1
+    
+    ; validar CX para evitar underflow
+    CMP CX,0
+    JL Menu       ; si CX < 0, volver al menu
+
+    CICLO1:
+    PUSH CX ;Pone en la pila el valor de CX, guardar contador externo
+    LEA SI, notas ; SI apunta al inicio del arreglo
+    MOV DI,SI ;Luego pasarla a D1, Variable temporal, porque nesesitamos otro indice para comparar el siguiente. 
+
+    ; Ciclo interno: comparaciones por pasada
+    MOV DX, AX           ; DX = total de estudiantes
+    DEC DX               ; DX = estudiantes - 1 (comparaciones)
+
+    CICLO2:       
+    INC DI ;Para poder incrementarle 1 a esa segunda variable y así poder comparar.
+    MOV AL, [SI] ;Pasar ek valor que se encuentra en la dirección de SI a AL
+    CMP AL, [DI] ;se compara con DI puesto que esta es la que apunta al siguiente indice, se le habia incrementado 1
+    JA INTERCAMBIO ;Salta a la etiqueta si es mayor
+    JB MENOR ;Short Jump si el primer operando esta por debajo del segundo operando, sin signo.
+
+    INTERCAMBIO:
+    MOV AH, [DI] ; Mueve el valor que se encuentra en DI a AH
+    MOV [DI], AL ;Swap mueve el segundo numero para donde esta el primero
+    MOV [SI], AH ;Pasa el valor de AH a la posicion de SI
+
+    MENOR:
+    INC SI
+    DEC DX
+    JNZ CICLO2           ; ciclo interno
+
+    POP CX               ; restaurar externo
+    DEC CX
+    JNZ CICLO1           ; ciclo externo
+    ;Esto de arriba es como un ciclo anidado 
+    ;------------------------------------------------
+    MOV AX, 4C00h
+    
+    ;---- Imprimir notas ordenadas ----
+    MOV SI, offset notas   ; apuntar al inicio del arreglo de notas
+    MOV AL, contador       ; n�mero de estudiantes
+    MOV CL, AL             ; contador de bucle
+
+    imprimir_notas_loop:
+        MOV AL, [SI]   ; nota (0-99)
+        MOV AH, 0
+        MOV BL, 10
+        DIV BL         ; AL = cociente (decenas), AH = residuo (unidades)
+        ADD AL, '0'
+        MOV DL, AL
+        MOV AH, 02h
+        INT 21h        ; imprime decena
+        MOV DL, AH
+        ADD DL, '0'
+        MOV AH, 02h
+        INT 21h        ; imprime unidad
+
+        ; imprimir espacio
+        MOV DL, ' '
+        MOV AH, 02h
+        INT 21h
+    
+        INC SI
+        LOOP imprimir_notas_loop 
+;--------Fin impresion de notas----
+        
+mov ah,08 ;pausa y captura de datos
+int 21h
+cmp al,27 ;ASCII 27 = ESC
+je Menu
+    
+jmp Menu
     
 op5: ;salida
     mov ax,4c00h
