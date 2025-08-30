@@ -17,7 +17,7 @@
 
     ; Mensajes para usuario en el apartado dentro de opcion1
     miNombre db 'Por favor ingrese su estudiante o precione ESC para volver a menu$',13,10,
-                db 'formato de entrada: -Nombre Apellido1 Apellido2 Nota-',13,10,13,10
+                db 'formato de entrada: -Nombre Apellido1 Apellido2 Nota-',13,10,13,10,'$'
 
     ;logica de Alexs para el ingresado de datos ---start---
     msg_ingresar db 'ingrese datos (Formato: Nombre-Apellido1-Apellido2-Nota): $'
@@ -47,18 +47,18 @@
     ;logica de Alexs para el ingresado de datos ---END---
 
     ; Para el apartado de estadisticas(opcion 2), mensajes por consola
-    estadisticas db 'Estadisticas generales del conjunto de estudiantes:',13,10,13,10
-            db 'precione ESC para volver a menu$',13,10
+    estadisticas db 'Estadisticas generales del conjunto de estudiantes:',13,10,13,10,
+            db 'precione ESC para volver a menu$',13,10,'$'
 
     ; Apartado opcion 3, buscado de estudiantes por indice
-    buscar db 'Buscar estudiante por indice, Que estudiante desea mostrar? ingrese el indice(posicion)',13,10,13,10
-            db 'precione ESC para volver a menu$',13,10
+    buscar db 'Buscar estudiante por indice, Que estudiante desea mostrar? ingrese el indice(posicion)',13,10,13,10,
+            db 'precione ESC para volver a menu$',13,10,'$'
 
     ; Ordenamiento de notas, bubblesort
     Ordenar db 'Ordenar notas, Como desea ordenarlas?',13,10,
             db 'Precione (1) Ascendente',13,10,
-            db '         (2) Descendente ',13,10,13,10
-            db 'precione ESC para volver a menu$',13,10
+            db '         (2) Descendente ',13,10,13,10,
+            db 'precione ESC para volver a menu$',13,10,'$'
 .code
     main proc
     mov ax, @data 
@@ -150,6 +150,11 @@ op1:
         mov ah, 0Ah ;pausa y captura de datos
         lea dx, buffer
         int 21h
+        
+        ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
+        mov si, offset buffer
+        mov cl, [si+1]              ; longitud real
+        mov byte ptr [si+2+cx], '$' ; sustituir el Enter por fin de cadena
 
         ;Separar y guardar datos
         call separar_datos
@@ -433,5 +438,7 @@ fin_mostrar:
     pop ax
     ret
 mostrar_numero endp
+
+
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
