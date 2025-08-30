@@ -259,7 +259,7 @@ op4:
     int 21h ;se muestra el mensajes
 
     ;determinar si se va a ordenar ascente o ascendente, primero obtener la eleccion del usuario por consola
-    mov ah,01h ;pausa hasta que el usuario escriba algo y captura de datos
+    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
     int 21h
 
     cmp al, 49 ;compara con 1
