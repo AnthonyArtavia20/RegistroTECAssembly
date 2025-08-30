@@ -25,7 +25,6 @@
     msg_contador db 13,10, 'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
-    msg_continuar db 13,10, 'Presione cualquier tecla para continuar...$'
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
     ;Buffer para entrada de nombre
@@ -37,7 +36,7 @@
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas db 15 dup(3 dup('$')) ;Notas 0-100
+    notas db 15 dup(0) ;Notas 0-100, 1 byte por nota
     
     ;variables de control
     contador db 0
@@ -59,10 +58,16 @@
             db 'Precione (1) Ascendente',13,10,
             db '         (2) Descendente ',13,10,13,10,
             db 'precione ESC para volver a menu$',13,10,'$'
+
+PILA SEGMENT
+    DB 64 DUP(0)
+PILA ENDS
+
 .code
     main proc
     mov ax, @data 
     mov ds, ax
+    ASSUME CS:code, DS:data, SS:PILA
 
 Menu:
     mov ah,0
@@ -123,6 +128,7 @@ op1:
     ;Codigo de Alex de ingresado y guardado de datos:
     mov bx, 15 ; pedir 15 estudiantes
     ingresar_dato_op1Loop:
+
         ;Mostrar mensaje con contador
         mov ah, 09h
         lea dx, msg_contador
@@ -147,9 +153,14 @@ op1:
         int 21h
 
         ;Pedir datos
-        mov ah, 0Ah ;pausa y captura de datos
+        mov ah, 0Ah ;pausa y captura de dato
         lea dx, buffer
         int 21h
+
+        ; Revisar si el primer caracter ingresado fue ESC (27) para poder salir del bucle en cualquier momento
+        mov al, [buffer+2]   ; el primer caracter real
+        cmp al, 27
+        je Menu              ; si fue ESC, saltar al menú
         
         ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
         mov si, offset buffer
@@ -176,18 +187,6 @@ op1:
         lea dx, msg_completado
         int 21h
 
-        ;Esperar tecla para continuar
-        mov ah, 09h
-        lea dx, msg_continuar
-        int 21h
-        mov ah, 01h
-        int 21h
-
-
-    cmp al,27 ;ASCII 27 = ESC
-    je Menu
-
-    jmp Menu ;Furza el regreso al menú siempre
 
 op2:
     mov ax,0600h ;limpiar pantalla
@@ -254,13 +253,74 @@ op4:
     mov dx, offset Ordenar
     mov ah,09
     int 21h
-    
-    mov ah,08 ;pausa y captura de datos
-    int 21h
-    cmp al,27 ;ASCII 27 = ESC
-    je Menu
 
-    jmp Menu
+    ; Configurar segmentos
+    PUSH DS
+    MOV AX, data
+    MOV DS, AX
+    MOV ES, AX
+
+    ;----------Codigo principal del desarrollo aqui:----------------------------
+
+    ;Se neesitan hacer comparacion e intercambio de posiciones
+    
+    ; Ciclo externo
+    mov cl, contador
+    dec cl
+    jz fin_sort
+
+CICLO_EXTERNO:
+    lea si, notas
+    mov ch, 0
+    mov bl, cl
+
+CICLO_INTERNO:
+    mov al, [si]
+    mov dl, [si+1]
+    cmp al, dl
+    JBE NO_SWAP
+    mov [si], dl
+    mov [si+1], al
+NO_SWAP:
+    inc si
+    dec bl
+    jnz CICLO_INTERNO
+
+    dec cl
+    jnz CICLO_EXTERNO
+fin_sort:
+
+    ;------------------------------------------------
+    MOV AX, 4C00h
+    
+    ;---- Imprimir notas ordenadas ----
+MOV SI, offset notas
+MOV CL, contador
+
+imprimir_notas_loop:
+    MOV AL, [SI]
+    CALL print_decimal
+    INC SI
+    MOV DL, ' '
+    MOV AH, 02h
+    INT 21h
+    LOOP imprimir_notas_loop
+
+; Salto de línea
+MOV DL, 13
+MOV AH, 02h
+INT 21h
+MOV DL, 10
+INT 21h
+
+;--------Fin impresion de notas----
+        
+mov ah,08 ;pausa y captura de datos
+int 21h
+cmp al,27 ;ASCII 27 = ESC
+je Menu
+    
+jmp Menu
     
 op5: ;salida
     mov ax,4c00h
@@ -305,10 +365,8 @@ separar_datos proc
     ; 4.Extraer Nota
     lea di, notas
     mov al, contador
-    mov bl, 3
-    mul bl
-    add di, ax
-    call extraer_campo
+    add di, ax        ; cada nota ocupa 1 byte
+    call extraer_nota ; convertimos ASCII a número y guardamos en [di]
 
     pop di
     pop si
@@ -439,6 +497,83 @@ fin_mostrar:
     ret
 mostrar_numero endp
 
+extraer_nota proc
+    push ax
+    push bx
+    push cx
+    push si
+    push di
 
+    lea si, buffer + 2
+    mov cl, [buffer+1]   ; longitud de cadena
+    add si, cx
+    dec si                ; apuntar al último caracter antes del Enter
+
+    ; retrocedemos hasta el '-'
+retroceder:
+    cmp byte ptr [si], '-'
+    je inicio_parse
+    dec si
+    jmp retroceder
+
+inicio_parse:
+    inc si               ; apuntar al primer dígito de la nota
+xor bx, bx         ; acumulador
+parse_loop:
+    mov al, [si]
+    cmp al, 13
+    je fin_parse
+    cmp al, '$'
+    je fin_parse
+    sub al, '0'      ; ASCII -> dígito
+    mov ah, 0
+    mov cx, bx       ; guardar acumulador en CX
+    mov bx, ax       ; BX = dígito por ahora
+    mov ax, cx
+    mov cx, 10
+    mul cx           ; AX = acumulador*10
+    add bx, ax       ; BX = acumulador*10 + dígito actual
+    inc si
+    jmp parse_loop
+fin_parse:
+    mov [di], bl
+
+    pop di
+    pop si
+    pop cx
+    pop bx
+    pop ax
+    ret
+extraer_nota endp
+
+; Entrada: AL = número 0–99
+; Sale: imprime el número en pantalla
+
+print_decimal proc
+    push ax
+    push dx
+
+    mov al, [SI]    ; o el valor que quieras imprimir
+    xor ah, ah
+    mov bl, 10
+    div bl          ; AL = decenas, AH = unidades
+
+    cmp al, 0
+    je print_unit
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+print_unit:
+    add ah, '0'     ; AH = residuo → unidad
+    mov dl, ah
+    mov ah, 02h
+    int 21h
+
+    pop dx
+    pop ax
+    ret
+print_decimal endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
