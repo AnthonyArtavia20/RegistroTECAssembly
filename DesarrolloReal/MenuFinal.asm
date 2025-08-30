@@ -71,42 +71,42 @@ PILA ENDS
 
 Menu:
     mov ah,0
-        mov al,3h ;Modo texto
-        int 10h
+    mov al,3h ;Modo texto
+    int 10h
 
-        mov ax,0600h ;Limpiar pantalla
-        mov bh,0fh; 0 Color de fondo negro, f color de letra color blanco
-        mov cx,0000h
-        mov dx,184Fh
-        int 10h
+    mov ax,0600h ;Limpiar pantalla
+    mov bh,0fh; 0 Color de fondo negro, f color de letra color blanco
+    mov cx,0000h
+    mov dx,184Fh
+    int 10h
 
-        mov ah,02h
-        mov bh,00
-        mov dh,00
-        mov dl,00
-        int 10h
+    mov ah,02h
+    mov bh,00
+    mov dh,00
+    mov dl,00
+    int 10h
 
-        mov dx, offset mostrarMenu ;nombre del mensaje
-        mov ah,09
-        int 21h
+    mov dx, offset mostrarMenu ;nombre del mensaje
+    mov ah,09
+    int 21h
 
-        mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
-        int 21h
+    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
+    int 21h
 
-        cmp al,49 ;compara con opcion 1 Ingresar calificaciones, compara en ASCII, 49 es 1
-        je op1  ; salto condicional, salta .
+    cmp al,49 ;compara con opcion 1 Ingresar calificaciones, compara en ASCII, 49 es 1
+    je op1  ; salto condicional, salta .
 
-        cmp al,50 ;compara con opcion 2 mostrar estadisticas
-        je op2
+    cmp al,50 ;compara con opcion 2 mostrar estadisticas
+    je op2
 
-        cmp al,51 ;compara con opcion 3 buscar estudiante por indice
-        je op3
+    cmp al,51 ;compara con opcion 3 buscar estudiante por indice
+    je op3
 
-        cmp al,52 ;compara con opcion 4 ordenar calificaciones(desc/asce)
-        je op4
+    cmp al,52 ;compara con opcion 4 ordenar calificaciones(desc/asce)
+    je op4
 
-        cmp al,53 ;compara con opcion 5 salir
-        je op5
+    cmp al,53 ;compara con opcion 5 salir
+    je op5
 
 op1:
     mov ax,0600h ;limpiar pantalla
@@ -238,65 +238,114 @@ op3:
     jmp Menu
 
 op4:
-    mov ax,0600h ;limpiar pantalla
+    mov ah,0
+    mov al,3h ;Modo texto
+    int 10h
+
+    mov ax,0600h ;Función 06h de int 10 - limpiar pantalla con desplazamiento para arriba
     mov bh, 1eh ;1 fondo azul, e color de letra amarilla
-    mov cx,0000h
-    mov dx,184Fh
-    int 10h
+    mov cx,0000h ;Coordenada superior izquierda, Fila,columna (0,0)
+    mov dx,184Fh ;Coordenada inferior derecha (24,79)
+    int 10h ;Llamada a BIOS para limpiar pantalla
     
-    mov ah,02h
-    mov bh,00
-    mov dh,00
-    mov dl,00
-    int 10h
+    mov ah,02h        ; Función 02h de int 10h: mover cursor.
+    mov bh,00         ; Página de video = 0.
+    mov dh,00         ; Fila = 0.
+    mov dl,00         ; Columna = 0.
+    int 10h           ; Llama BIOS → coloca cursor arriba a la izquierda.
     
-    mov dx, offset Ordenar
-    mov ah,09
+    mov dx, offset Ordenar ;SE pasa a DX la dirección del mensaje del segmento .data de "ordenar"
+    mov ah,09 ;Función 09h de int 21h: Imprimir strings por pantalla, byte a byte
+    int 21h ;se muestra el mensajes
+
+    ;determinar si se va a ordenar ascente o ascendente, primero obtener la eleccion del usuario por consola
+    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
     int 21h
 
-    ; Configurar segmentos
-    PUSH DS
-    MOV AX, data
-    MOV DS, AX
-    MOV ES, AX
+    cmp al, 49 ;compara con 1
+    je BubbleAscendente
 
-    ;----------Codigo principal del desarrollo aqui:----------------------------
+    cmp al, 50 ;compara con 1
+    je BubbleDescendente
 
+        ;----------Codigo principal del BubbleSort aqui:----------------------------
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
-    ; Ciclo externo
-    mov cl, contador
-    dec cl
-    jz fin_sort
+    BubbleAscendente:
+        ; Configurar segmentos
+        PUSH DS
+        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV DS, AX ;DS = segmento de datos
+        MOV ES, AX  ;para copias
 
-CICLO_EXTERNO:
-    lea si, notas
-    mov ch, 0
-    mov bl, cl
+        ; Ciclo externo
+        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
+        dec cl ;cl-1, es decir numero de pasadas necesarias.
+        jz fin_sort ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
 
-CICLO_INTERNO:
-    mov al, [si]
-    mov dl, [si+1]
-    cmp al, dl
-    JBE NO_SWAP
-    mov [si], dl
-    mov [si+1], al
-NO_SWAP:
-    inc si
-    dec bl
-    jnz CICLO_INTERNO
+        CICLO_EXTERNO:
+            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
+            mov ch, 0 ; CH = 0 deja limpio el registro.
+            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
 
-    dec cl
-    jnz CICLO_EXTERNO
-fin_sort:
+        CICLO_INTERNO:
+            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
+            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
+            cmp al, dl ;aca es cuando se compara y se decide.
+            JBE NO_SWAP ;Si AL <= DL entonces no se haec swap...
+            mov [si], dl ; Si AL >= DL entonces en nota[i] se pone el valor mayor
+            mov [si+1], al ; y en nota[i+1] pones el valor menor.
+        NO_SWAP:
+            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
+            dec bl ;y se decrementa BL para hacer una compración menos
+            jnz CICLO_INTERNO ; Si BL distinto de 0, sigue comparando.
 
-    ;------------------------------------------------
-    MOV AX, 4C00h
-    
-    ;---- Imprimir notas ordenadas ----
-MOV SI, offset notas
-MOV CL, contador
+            dec cl ;una pasada menos
+            jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
+        fin_sort:
+            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
 
+            jmp salir ;Para que no siga con el codigo de Descendente
+
+    BubbleDescendente:
+        ; Configurar segmentos
+        PUSH DS
+        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV DS, AX ;DS = segmento de datos
+        MOV ES, AX  ;para copias
+
+        ; Ciclo externo
+        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
+        dec cl ;cl-1, es decir numero de pasadas necesarias.
+        jz fin_sortDescen ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
+
+        CICLO_EXTERNODescen:
+            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
+            mov ch, 0 ; CH = 0 deja limpio el registro.
+            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
+
+        CICLO_INTERNODescen:
+            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
+            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
+            cmp al, dl ;aca es cuando se compara y se decide.
+            JAE NO_SWAPDescen ;“Jump if Above or Equal” = si AL ≥ DL entonces ya está en orden descendente → no swap..
+            mov [si], dl ; Si AL < DL → sí hay swap, porque en descendente queremos que el mayor quede primero.
+            mov [si+1], al ; y en nota[i+1] pones el valor menor.
+        NO_SWAPDescen:
+            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
+            dec bl ;y se decrementa BL para hacer una compración menos
+            jnz CICLO_INTERNODescen ; Si BL distinto de 0, sigue comparando.
+
+            dec cl ;una pasada menos
+            jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
+        fin_sortDescen:
+            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
+
+        salir: ;para que pueda seguir con la impresión de notas.
+
+;--------Inicio impresion de notas----
+    MOV SI, offset notas
+    MOV CL, contador
 imprimir_notas_loop:
     MOV AL, [SI]
     CALL print_decimal
@@ -306,21 +355,18 @@ imprimir_notas_loop:
     INT 21h
     LOOP imprimir_notas_loop
 
-; Salto de línea
-MOV DL, 13
-MOV AH, 02h
-INT 21h
-MOV DL, 10
-INT 21h
-
+    ; Salto de línea
+    MOV DL, 13
+    MOV AH, 02h
+    INT 21h
+    MOV DL, 10
+    INT 21h
 ;--------Fin impresion de notas----
-        
-mov ah,08 ;pausa y captura de datos
-int 21h
-cmp al,27 ;ASCII 27 = ESC
-je Menu
-    
-jmp Menu
+    mov ah,08 ;pausa y captura de datos
+    int 21h
+    cmp al,27 ;ASCII 27 = ESC
+    je Menu
+    jmp Menu
     
 op5: ;salida
     mov ax,4c00h
@@ -329,7 +375,7 @@ op5: ;salida
     main endp ; Con este cierra el procedimiento(funcion) principal, o loop principal.
 
 ;Apartir de aca se ponen los procedimientos auxiliares o funciones auxiliares.
-separar_datos proc
+separar_datos proc ;Para el ingresado de datos, por separarlos para que las distintas funciones puedan saber como interpretar los notas extraidas por ejemplo
     push ax
     push bx
     push cx
@@ -391,7 +437,7 @@ extraer_caracter:
     je fin_campo
     cmp al, 13 ; es enter?
     je fin_campo
-    cmp al, '$'
+    cmp al, '$' ;es el indicador de fin?
     je fin_campo
 
     mov [di], al ;copiar caracter
@@ -497,7 +543,7 @@ fin_mostrar:
     ret
 mostrar_numero endp
 
-extraer_nota proc
+extraer_nota proc ;Para poder sacar la nota de lo ingresado desde la op1, esto para que el bubbleSort pueda ordenarlas como números y no en otro formato raro coo ASCII o Binario
     push ax
     push bx
     push cx
@@ -518,8 +564,8 @@ retroceder:
 
 inicio_parse:
     inc si               ; apuntar al primer dígito de la nota
-xor bx, bx         ; acumulador
-parse_loop:
+    xor bx, bx         ; acumulador
+parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
     mov al, [si]
     cmp al, 13
     je fin_parse
@@ -546,14 +592,14 @@ fin_parse:
     ret
 extraer_nota endp
 
-; Entrada: AL = número 0–99
+; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
 ; Sale: imprime el número en pantalla
 
 print_decimal proc
     push ax
     push dx
 
-    mov al, [SI]    ; o el valor que quieras imprimir
+    mov al, [SI]
     xor ah, ah
     mov bl, 10
     div bl          ; AL = decenas, AH = unidades
