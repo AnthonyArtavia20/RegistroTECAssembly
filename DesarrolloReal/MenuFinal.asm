@@ -258,22 +258,29 @@ op4:
     mov ah,09 ;Función 09h de int 21h: Imprimir strings por pantalla, byte a byte
     int 21h ;se muestra el mensajes
 
+    ; Verificar si contador == 0
+    mov al, contador
+    cmp al, 0
+    je Menu   ; si no hay datos, regresar al menú
+
     ;determinar si se va a ordenar ascente o ascendente, primero obtener la eleccion del usuario por consola
-    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
-    int 21h
-
-    cmp al, 49 ;compara con 1
-    je BubbleAscendente
-
-    cmp al, 50 ;compara con 1
-    je BubbleDescendente
+    elegir_orden:
+        mov ah, 08h
+        int 21h
+        cmp al, 27 ; ASCII 27 = ESC
+        je Menu  
+        cmp al, 49 ;Compara con 1
+        je BubbleAscendente
+        cmp al, 50 ;Compara con 2
+        je BubbleDescendente
+        jmp elegir_orden
 
         ;----------Codigo principal del BubbleSort aqui:----------------------------
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
     BubbleAscendente:
         ; Configurar segmentos
-        PUSH DS
+        PUSH DS ;se guarda el valor del registro de segmento de datos en la pila, para preservar el estado antes de moficarlo.
         MOV AX, data ;todo el segmento de datos cargado en AX
         MOV DS, AX ;DS = segmento de datos
         MOV ES, AX  ;para copias
@@ -433,7 +440,7 @@ extraer_campo proc
 
 extraer_caracter:
     mov al, [si]
-    cmp al, ',' ; es coma?
+    cmp al, '-' ; es -?
     je fin_campo
     cmp al, 13 ; es enter?
     je fin_campo
