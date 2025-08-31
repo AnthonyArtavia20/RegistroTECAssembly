@@ -281,7 +281,7 @@ op4:
     BubbleAscendente:
         ; Configurar segmentos
         PUSH DS ;se guarda el valor del registro de segmento de datos en la pila, para preservar el estado antes de moficarlo.
-        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV AX, @data ;todo el segmento de datos cargado en AX
         MOV DS, AX ;DS = segmento de datos
         MOV ES, AX  ;para copias
 
@@ -310,14 +310,13 @@ op4:
             dec cl ;una pasada menos
             jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
         fin_sort:
-            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
 
             jmp salir ;Para que no siga con el codigo de Descendente
 
     BubbleDescendente:
         ; Configurar segmentos
         PUSH DS
-        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV AX, @data ;todo el segmento de datos cargado en AX
         MOV DS, AX ;DS = segmento de datos
         MOV ES, AX  ;para copias
 
@@ -346,35 +345,43 @@ op4:
             dec cl ;una pasada menos
             jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
         fin_sortDescen:
-            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
 
         salir: ;para que pueda seguir con la impresión de notas.
 
 ;--------Inicio impresion de notas----
-    MOV SI, offset notas
-    MOV CL, contador
-imprimir_notas_loop:
-    MOV AL, [SI]
-    CALL print_decimal
-    INC SI
-    MOV DL, ' '
-    MOV AH, 02h
-    INT 21h
-    LOOP imprimir_notas_loop
+    mov cl, contador     ; cantidad de notas
+    jcxz fin_impresion   ; si contador = 0, no hay nada que imprimir
 
-    ; Salto de línea
-    MOV DL, 13
-    MOV AH, 02h
-    INT 21h
-    MOV DL, 10
-    INT 21h
-;--------Fin impresion de notas----
-    mov ah,08 ;pausa y captura de datos
+    mov si, offset notas ; SI apunta al inicio del arreglo
+
+imprimir_notas_loop:
+    mov al, [si]         ; AL = nota actual
+    call print_decimal   ; imprime la nota
+
+    ; imprimir un espacio entre notas
+    mov dl, ' '
+    mov ah, 02h
     int 21h
-    cmp al,27 ;ASCII 27 = ESC
+
+    inc si ; Se asegura de avanzar al siguiente valor en la array
+    loop imprimir_notas_loop
+
+fin_impresion:
+    ; salto de línea final
+    mov dl, 13
+    mov ah, 02h
+    int 21h
+    mov dl, 10
+    int 21h
+
+    ; pausa (esperar tecla)
+    mov ah,08h
+    int 21h
+    cmp al,27            ; ASCII 27 = ESC
     je Menu
     jmp Menu
-    
+;--------Fin impresion de notas----
+
 op5: ;salida
     mov ax,4c00h
     int 21h
@@ -605,25 +612,31 @@ extraer_nota endp
 print_decimal proc
     push ax
     push dx
+    push cx ;PReserva el CX porque LOOP usa cx/cl, anteriormente al printear las notas lo hacía bien pero terminaba en bucle imprimiendo 
+    ;basura porque el contador se modificaba aquí adentro.
 
-    mov al, [SI]
     xor ah, ah
     mov bl, 10
-    div bl          ; AL = decenas, AH = unidades
+    div bl          ; AL = decenas, AH = unidades(residuo)
+
+    mov cl, ah      ; Guarda las unidades antes de que AX sea sobreescrito
 
     cmp al, 0
-    je print_unit
-    add al, '0'
+    je print_unit ;Sino hay decenas, imprimir solo la unidad.
+
+    add al, '0' ;Convertir las descenas a ASCII
     mov dl, al
     mov ah, 02h
-    int 21h
+    int 21h ;imprimir decena
 
 print_unit:
-    add ah, '0'     ; AH = residuo → unidad
-    mov dl, ah
+    mov dl,ch ;traer la unidad guardada
+    add cl, '0' ;ASCII unidad
+    mov dl, cl
     mov ah, 02h
-    int 21h
+    int 21h ; imprimir unidad
 
+    pop cx
     pop dx
     pop ax
     ret
