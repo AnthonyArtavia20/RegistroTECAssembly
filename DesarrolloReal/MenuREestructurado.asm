@@ -179,6 +179,30 @@ op1:
        cmp al, 27
        je volver_menu_op1
 
+       ;verificar que existan los 4 campos antes de validar
+       push si
+       call contar_campos
+       cmp al, 4
+       je _tokens_ok
+       cmp al, 4
+       jb _faltan
+
+       ;si > 4
+       lea dx, msg_err_extra
+       call imprimir_mensaje
+       pop si
+       jmp entrada_invalida
+
+       _faltan:
+       lea dx, msg_err_campos
+       call imprimir_mensaje
+       pop si
+       jmp entrada_invalida
+
+       _tokens_ok:
+       pop si
+
+
        ; Validar y guardar
        call validar_y_guardar
        cmp flag_error, 0
@@ -327,8 +351,10 @@ saltar_espacios_salir:
 saltar_espacios endp
 
 checar_letra proc ;Revisamos si el caracter es A/Z o minus
-    push ax
+    push bx
+
     mov ah, al
+
     ; 'A'..'Z'
     cmp al, 'A'
     jb no_mayus
@@ -344,13 +370,12 @@ no_mayus:
 
 checar_letra_false:
     mov al, 1
-    pop ax
+    pop bx
     ret
 
 checar_letra_true:
-    mov al, ah
-    cmp al, al ;Comparamos a AL consigo mismo
-    pop ax
+    xor al, al
+    pop bx
     ret
 
 checar_letra endp
@@ -462,7 +487,8 @@ leer_palabra_validada_loop:
     ; Validamos la letra
     push ax
     call checar_letra
-    jz leer_palabra_validada_okchar
+    cmp al, 0
+    je leer_palabra_validada_okchar
 
     ; no es letra
     lea dx, msg_err_letras
@@ -667,6 +693,8 @@ validar_y_guardar proc
     cmp al, 13
     je validar_y_guardar_ok
     cmp al, '$'
+    je validar_y_guardar_ok
+    cmp al, 0
     je validar_y_guardar_ok
 
     ;hay mas texto? = error
