@@ -28,15 +28,15 @@
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
     ;Buffer para entrada de nombre
-    buffer db 51 ;maximo 50 caracteres + enter
+    buffer db 128 ;maximo 50 caracteres + enter
             db ? ;espacio para longitud real
-            db 51 dup('$') ;espacio para el nombre
+            db 128 dup('$') ;espacio para el nombre se aumentó la capacidad
 
     ;Array para almacenar los 15 nobres
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas db 15 dup(0) ;Notas 0-100, 1 byte por nota
+    notas db 15 dup(0) ;Notas 0-100, 1 bytes por nota
     
     ;variables de control
     contador db 0
@@ -173,7 +173,6 @@ op1:
         ;Incrementar contador
         inc contador
 
-        ;Nueva linea
         mov ah, 09h
         lea dx, nueva_linea
         int 21h
@@ -187,6 +186,7 @@ op1:
         lea dx, msg_completado
         int 21h
 
+        jmp Menu; Sin esto caería a la opcion 2 al terminar.s
 
 op2:
     mov ax,0600h ;limpiar pantalla
@@ -346,9 +346,16 @@ op4:
             jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
         fin_sortDescen:
 
-        salir: ;para que pueda seguir con la impresión de notas.
-
+        salir: ;para que pueda seguir con la impresión de notas, simplemente un lugar donde saltar, brincadose todo el proceso de por medio, es como un return controlado.
 ;--------Inicio impresion de notas----
+    ; Salto de línea antes de imprimir notas
+    mov dl, 13       ; Carriage return
+    mov ah, 02h
+    int 21h
+    mov dl, 10       ; Line feed
+    mov ah, 02h
+    int 21h
+
     mov cl, contador     ; cantidad de notas
     jcxz fin_impresion   ; si contador = 0, no hay nada que imprimir
 
@@ -578,7 +585,7 @@ retroceder:
 
 inicio_parse:
     inc si               ; apuntar al primer dígito de la nota
-    xor bx, bx         ; acumulador
+    xor bx, bx         ; acumulador BX = 0
 parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
     mov al, [si]
     cmp al, 13
@@ -608,6 +615,7 @@ extraer_nota endp
 
 ; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
 ; Sale: imprime el número en pantalla
+; Update de correción: Se preservan los registros porque sino peta 
 
 print_decimal proc
     push ax
@@ -615,6 +623,22 @@ print_decimal proc
     push cx ;PReserva el CX porque LOOP usa cx/cl, anteriormente al printear las notas lo hacía bien pero terminaba en bucle imprimiendo 
     ;basura porque el contador se modificaba aquí adentro.
 
+    cmp al, 100
+    jne not_hundred
+
+    ; Caso especial: 100
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    jmp done
+
+not_hundred:
     xor ah, ah
     mov bl, 10
     div bl          ; AL = decenas, AH = unidades(residuo)
@@ -636,6 +660,7 @@ print_unit:
     mov ah, 02h
     int 21h ; imprimir unidad
 
+done:
     pop cx
     pop dx
     pop ax
