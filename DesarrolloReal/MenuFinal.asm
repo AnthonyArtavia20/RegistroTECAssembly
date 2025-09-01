@@ -28,15 +28,15 @@
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
     ;Buffer para entrada de nombre
-    buffer db 51 ;maximo 50 caracteres + enter
+    buffer db 128 ;maximo 50 caracteres + enter
             db ? ;espacio para longitud real
-            db 51 dup('$') ;espacio para el nombre
+            db 128 dup('$') ;espacio para el nombre se aumentó la capacidad
 
     ;Array para almacenar los 15 nobres
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas db 15 dup(0) ;Notas 0-100, 1 byte por nota
+    notas db 15 dup(0) ;Notas 0-100, 1 bytes por nota
     
     ;variables de control
     contador db 0
@@ -173,7 +173,6 @@ op1:
         ;Incrementar contador
         inc contador
 
-        ;Nueva linea
         mov ah, 09h
         lea dx, nueva_linea
         int 21h
@@ -187,6 +186,7 @@ op1:
         lea dx, msg_completado
         int 21h
 
+        jmp Menu; Sin esto caería a la opcion 2 al terminar.s
 
 op2:
     mov ax,0600h ;limpiar pantalla
@@ -258,23 +258,30 @@ op4:
     mov ah,09 ;Función 09h de int 21h: Imprimir strings por pantalla, byte a byte
     int 21h ;se muestra el mensajes
 
+    ; Verificar si contador == 0
+    mov al, contador
+    cmp al, 0
+    je Menu   ; si no hay datos, regresar al menú
+
     ;determinar si se va a ordenar ascente o ascendente, primero obtener la eleccion del usuario por consola
-    mov ah,08 ;pausa hasta que el usuario escriba algo y captura de datos
-    int 21h
-
-    cmp al, 49 ;compara con 1
-    je BubbleAscendente
-
-    cmp al, 50 ;compara con 1
-    je BubbleDescendente
+    elegir_orden:
+        mov ah, 08h
+        int 21h
+        cmp al, 27 ; ASCII 27 = ESC
+        je Menu  
+        cmp al, 49 ;Compara con 1
+        je BubbleAscendente
+        cmp al, 50 ;Compara con 2
+        je BubbleDescendente
+        jmp elegir_orden
 
         ;----------Codigo principal del BubbleSort aqui:----------------------------
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
     BubbleAscendente:
         ; Configurar segmentos
-        PUSH DS
-        MOV AX, data ;todo el segmento de datos cargado en AX
+        PUSH DS ;se guarda el valor del registro de segmento de datos en la pila, para preservar el estado antes de moficarlo.
+        MOV AX, @data ;todo el segmento de datos cargado en AX
         MOV DS, AX ;DS = segmento de datos
         MOV ES, AX  ;para copias
 
@@ -303,14 +310,13 @@ op4:
             dec cl ;una pasada menos
             jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
         fin_sort:
-            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
 
             jmp salir ;Para que no siga con el codigo de Descendente
 
     BubbleDescendente:
         ; Configurar segmentos
         PUSH DS
-        MOV AX, data ;todo el segmento de datos cargado en AX
+        MOV AX, @data ;todo el segmento de datos cargado en AX
         MOV DS, AX ;DS = segmento de datos
         MOV ES, AX  ;para copias
 
@@ -339,35 +345,50 @@ op4:
             dec cl ;una pasada menos
             jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
         fin_sortDescen:
-            MOV AX, 4C00h ;Funcion 4Ch de int 21h: salir del programa
 
-        salir: ;para que pueda seguir con la impresión de notas.
-
+        salir: ;para que pueda seguir con la impresión de notas, simplemente un lugar donde saltar, brincadose todo el proceso de por medio, es como un return controlado.
 ;--------Inicio impresion de notas----
-    MOV SI, offset notas
-    MOV CL, contador
-imprimir_notas_loop:
-    MOV AL, [SI]
-    CALL print_decimal
-    INC SI
-    MOV DL, ' '
-    MOV AH, 02h
-    INT 21h
-    LOOP imprimir_notas_loop
-
-    ; Salto de línea
-    MOV DL, 13
-    MOV AH, 02h
-    INT 21h
-    MOV DL, 10
-    INT 21h
-;--------Fin impresion de notas----
-    mov ah,08 ;pausa y captura de datos
+    ; Salto de línea antes de imprimir notas
+    mov dl, 13       ; Carriage return
+    mov ah, 02h
     int 21h
-    cmp al,27 ;ASCII 27 = ESC
+    mov dl, 10       ; Line feed
+    mov ah, 02h
+    int 21h
+
+    mov cl, contador     ; cantidad de notas
+    jcxz fin_impresion   ; si contador = 0, no hay nada que imprimir
+
+    mov si, offset notas ; SI apunta al inicio del arreglo
+
+imprimir_notas_loop:
+    mov al, [si]         ; AL = nota actual
+    call print_decimal   ; imprime la nota
+
+    ; imprimir un espacio entre notas
+    mov dl, ' '
+    mov ah, 02h
+    int 21h
+
+    inc si ; Se asegura de avanzar al siguiente valor en la array
+    loop imprimir_notas_loop
+
+fin_impresion:
+    ; salto de línea final
+    mov dl, 13
+    mov ah, 02h
+    int 21h
+    mov dl, 10
+    int 21h
+
+    ; pausa (esperar tecla)
+    mov ah,08h
+    int 21h
+    cmp al,27            ; ASCII 27 = ESC
     je Menu
     jmp Menu
-    
+;--------Fin impresion de notas----
+
 op5: ;salida
     mov ax,4c00h
     int 21h
@@ -433,7 +454,7 @@ extraer_campo proc
 
 extraer_caracter:
     mov al, [si]
-    cmp al, ',' ; es coma?
+    cmp al, '-' ; es -?
     je fin_campo
     cmp al, 13 ; es enter?
     je fin_campo
@@ -564,7 +585,7 @@ retroceder:
 
 inicio_parse:
     inc si               ; apuntar al primer dígito de la nota
-    xor bx, bx         ; acumulador
+    xor bx, bx         ; acumulador BX = 0
 parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
     mov al, [si]
     cmp al, 13
@@ -594,29 +615,53 @@ extraer_nota endp
 
 ; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
 ; Sale: imprime el número en pantalla
+; Update de correción: Se preservan los registros porque sino peta 
 
 print_decimal proc
     push ax
     push dx
+    push cx ;PReserva el CX porque LOOP usa cx/cl, anteriormente al printear las notas lo hacía bien pero terminaba en bucle imprimiendo 
+    ;basura porque el contador se modificaba aquí adentro.
 
-    mov al, [SI]
+    cmp al, 100
+    jne not_hundred
+
+    ; Caso especial: 100
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    jmp done
+
+not_hundred:
     xor ah, ah
     mov bl, 10
-    div bl          ; AL = decenas, AH = unidades
+    div bl          ; AL = decenas, AH = unidades(residuo)
+
+    mov cl, ah      ; Guarda las unidades antes de que AX sea sobreescrito
 
     cmp al, 0
-    je print_unit
-    add al, '0'
+    je print_unit ;Sino hay decenas, imprimir solo la unidad.
+
+    add al, '0' ;Convertir las descenas a ASCII
     mov dl, al
     mov ah, 02h
-    int 21h
+    int 21h ;imprimir decena
 
 print_unit:
-    add ah, '0'     ; AH = residuo → unidad
-    mov dl, ah
+    mov dl,ch ;traer la unidad guardada
+    add cl, '0' ;ASCII unidad
+    mov dl, cl
     mov ah, 02h
-    int 21h
+    int 21h ; imprimir unidad
 
+done:
+    pop cx
     pop dx
     pop ax
     ret
