@@ -431,6 +431,7 @@ separar_datos proc ;Para el ingresado de datos, por separarlos para que las dist
 
     ; 4.Extraer Nota
     lea di, notas
+    xor ax, ax
     mov al, contador
     add di, ax        ; cada nota ocupa 1 byte
     call extraer_nota ; convertimos ASCII a número y guardamos en [di]
