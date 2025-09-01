@@ -20,8 +20,8 @@
                 db 'formato de entrada: -Nombre Apellido1 Apellido2 Nota-',13,10,13,10,'$'
 
     ;logica de Alexs para el ingresado de datos ---start---
-    msg_ingresar db 'ingrese datos (Formato: Nombre-Apellido1-Apellido2-Nota): $'
-    msg_formato db 13,10, 'Ejemplo: Juan-Perez-Garcia-85',13,10,'$'
+    msg_ingresar db 'ingrese datos (Formato: Nombre Apellido1 Apellido2 Nota): $'
+    msg_formato db 13,10, 'Ejemplo: Juan Perez Garcia 85',13,10,'$'
     msg_contador db 13,10, 'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
@@ -455,7 +455,7 @@ extraer_campo proc
 
 extraer_caracter:
     mov al, [si]
-    cmp al, '-' ; es -?
+    cmp al, ' ' ; es -?
     je fin_campo
     cmp al, 13 ; es enter?
     je fin_campo
@@ -469,7 +469,16 @@ extraer_caracter:
     jmp extraer_caracter
 
 fin_campo:
-    inc si ;saltar la coma
+    inc si 
+
+saltar_espacios:
+    cmp byte ptr [si], ' '
+    jne fin_skip_spaces
+    inc si
+    jmp saltar_espacios
+
+fin_skip_spaces:
+
     pop di
     pop si
     pop cx
@@ -577,9 +586,17 @@ extraer_nota proc ;Para poder sacar la nota de lo ingresado desde la op1, esto p
     add si, cx
     dec si                ; apuntar al último caracter antes del Enter
 
-    ; retrocedemos hasta el '-'
+;Si hay espacios al final, retrocede sobre ellos
+retrocede_espacios_finales:
+    cmp byte ptr [si], ' '
+    jne lista_para_buscar_sep
+    dec si
+    jmp retrocede_espacios_finales
+
+lista_para_buscar_sep:
+    ;retrocede hasya el espacio anterior
 retroceder:
-    cmp byte ptr [si], '-'
+    cmp byte ptr [si], ' '
     je inicio_parse
     dec si
     jmp retroceder
@@ -587,6 +604,7 @@ retroceder:
 inicio_parse:
     inc si               ; apuntar al primer dígito de la nota
     xor bx, bx         ; acumulador BX = 0
+
 parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
     mov al, [si]
     cmp al, 13
