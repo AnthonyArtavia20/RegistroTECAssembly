@@ -36,7 +36,7 @@
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas db 15 dup(0) ;Notas 0-100, 1 bytes por nota
+    notas dd 15 dup(0) ; cada nota sera 32 bits (4 bytes)
     
     ;variables de control
     contador db 0
@@ -189,28 +189,58 @@ op1:
         jmp Menu; Sin esto caería a la opcion 2 al terminar.s
 
 op2:
-    mov ax,0600h ;limpiar pantalla
-    mov bh, 1eh ;1 fondo azul, e color de letra amarilla
-    mov cx,0000h
+    mov ax,0600h          ; Limpiar pantalla
+    mov bh, 1eh           ; Fondo azul, letra amarilla
+    mov cx,0000
     mov dx,184Fh
     int 10h
-    
-    mov ah,02h
+
+    mov ah,02h             ; mover cursor a (0,0)
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
-    
+
     mov dx, offset estadisticas
     mov ah,09
     int 21h
-    
-    mov ah,08 ;pausa y captura de datos
-    int 21h
-    cmp al,27 ;ASCII 27 = ESC
-    je Menu
 
+    ; ----------------------
+    ; Imprimir notas de 32 bits
+    ; ----------------------
+    mov cl, contador       ; cantidad de estudiantes ingresados
+    jcxz fin_op2           ; si no hay, saltar
+
+    mov si, offset notas   ; apuntar al inicio del array de notas (32 bits por estudiante)
+
+imprimir_notas_op2:
+    ; Cargar la nota simulada de 32 bits en DX:AX
+    mov ax, [si]           ; 16 bits bajos
+    mov dx, [si+2]         ; 16 bits altos
+    call print_decimal32    ; imprimir nota
+    ; imprimir espacio
+    mov dl, ' '
+    mov ah, 02h
+    int 21h
+
+    add si, 4              ; avanzar al siguiente entero de 32 bits
+    loop imprimir_notas_op2
+
+fin_op2:
+    ; salto de línea final
+    mov dl, 13
+    mov ah, 02h
+    int 21h
+    mov dl, 10
+    int 21h
+
+    ; pausa hasta tecla
+    mov ah,08h
+    int 21h
+    cmp al,27              ; ESC para volver al menú
+    je Menu
     jmp Menu
+
 
 op3: 
     
@@ -252,7 +282,7 @@ op4:
     mov bh,00         ; Página de video = 0.
     mov dh,00         ; Fila = 0.
     mov dl,00         ; Columna = 0.
-    int 10h           ; Llama BIOS → coloca cursor arriba a la izquierda.
+    int 10h           ; Llama BIOS ? coloca cursor arriba a la izquierda.
     
     mov dx, offset Ordenar ;SE pasa a DX la dirección del mensaje del segmento .data de "ordenar"
     mov ah,09 ;Función 09h de int 21h: Imprimir strings por pantalla, byte a byte
@@ -334,8 +364,8 @@ op4:
             mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
             mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
             cmp al, dl ;aca es cuando se compara y se decide.
-            JAE NO_SWAPDescen ;“Jump if Above or Equal” = si AL ≥ DL entonces ya está en orden descendente → no swap..
-            mov [si], dl ; Si AL < DL → sí hay swap, porque en descendente queremos que el mayor quede primero.
+            JAE NO_SWAPDescen ;“Jump if Above or Equal” = si AL = DL entonces ya está en orden descendente ? no swap..
+            mov [si], dl ; Si AL < DL ? sí hay swap, porque en descendente queremos que el mayor quede primero.
             mov [si+1], al ; y en nota[i+1] pones el valor menor.
         NO_SWAPDescen:
             inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
@@ -363,7 +393,7 @@ op4:
 
 imprimir_notas_loop:
     mov al, [si]         ; AL = nota actual
-    call print_decimal   ; imprime la nota
+    call print_decimal32   ; imprime la nota
 
     ; imprimir un espacio entre notas
     mov dl, ' '
@@ -574,116 +604,120 @@ fin_mostrar:
     ret
 mostrar_numero endp
 
-extraer_nota proc ;Para poder sacar la nota de lo ingresado desde la op1, esto para que el bubbleSort pueda ordenarlas como números y no en otro formato raro coo ASCII o Binario
+; Entrada: buffer contiene la cadena "80.63421"
+; Salida: DX:AX = entero simulado 8063421
+extraer_nota proc
     push ax
     push bx
     push cx
+    push dx
     push si
     push di
 
-    lea si, buffer + 2
-    mov cl, [buffer+1]   ; longitud de cadena
-    add si, cx
-    dec si                ; apuntar al último caracter antes del Enter
+    lea si, buffer + 2      ; inicio de la cadena real
+    xor dx, dx              ; parte alta del entero
+    xor ax, ax              ; parte baja del entero
+    xor bx, bx              ; acumulador temporal
+    xor cx, cx              ; contador de dígitos procesados
 
-;Si hay espacios al final, retrocede sobre ellos
-retrocede_espacios_finales:
-    cmp byte ptr [si], ' '
-    jne lista_para_buscar_sep
-    dec si
-    jmp retrocede_espacios_finales
+extraer_digito:
+    mov bl, [si]            ; tomar caracter
+    cmp bl, 13              ; fin de cadena
+    je fin_nota
+    cmp bl, '$'
+    je fin_nota
+    cmp bl, '.'             ; ignorar el punto decimal
+    je siguiente_caracter
 
-lista_para_buscar_sep:
-    ;retrocede hasya el espacio anterior
-retroceder:
-    cmp byte ptr [si], ' '
-    je inicio_parse
-    dec si
-    jmp retroceder
+    sub bl, '0'             ; convertir ASCII -> dígito 0-9
 
-inicio_parse:
-    inc si               ; apuntar al primer dígito de la nota
-    xor bx, bx         ; acumulador BX = 0
+    ; Multiplicar entero actual DX:AX por 10
+    mov cx, ax
+    shl dx, 1               ; dx:ax * 2
+    rol ax, 1
+    shl dx, 3               ; dx:ax * 8 (total *10)
+    add ax, cx
+    adc dx, 0
 
-parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
-    mov al, [si]
-    cmp al, 13
-    je fin_parse
-    cmp al, '$'
-    je fin_parse
-    sub al, '0'      ; ASCII -> dígito
-    mov ah, 0
-    mov cx, bx       ; guardar acumulador en CX
-    mov bx, ax       ; BX = dígito por ahora
-    mov ax, cx
-    mov cx, 10
-    mul cx           ; AX = acumulador*10
-    add bx, ax       ; BX = acumulador*10 + dígito actual
+    add ax, bx              ; sumamos el dígito actual
+    adc dx, 0
+
+    inc cx                  ; contador de dígitos
+
+siguiente_caracter:
     inc si
-    jmp parse_loop
-fin_parse:
-    mov [di], bl
+    jmp extraer_digito
 
+fin_nota:
+    ; DX:AX tiene el entero simulado
     pop di
     pop si
+    pop dx
     pop cx
     pop bx
     pop ax
     ret
 extraer_nota endp
 
+
 ; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
 ; Sale: imprime el número en pantalla
 ; Update de correción: Se preservan los registros porque sino peta 
 
-print_decimal proc
+; ------------------------------------------------------
+; print_decimal32: imprime DX:AX como número decimal
+; Entrada: DX:AX = entero 32 bits
+; Sale: número impreso en pantalla
+; ------------------------------------------------------
+print_decimal32 proc
     push ax
+    push bx
+    push cx
     push dx
-    push cx ;PReserva el CX porque LOOP usa cx/cl, anteriormente al printear las notas lo hacía bien pero terminaba en bucle imprimiendo 
-    ;basura porque el contador se modificaba aquí adentro.
+    push si
+    push di
 
-    cmp al, 100
-    jne not_hundred
+    ; Reservar buffer temporal para dígitos
+    lea si, buffer          ; usar buffer para almacenar dígitos
+    mov di, si              ; DI apunta al inicio del buffer
+    add di, 128             ; empezar desde el final del buffer
+    mov cx, 0               ; contador de dígitos
 
-    ; Caso especial: 100
-    mov dl, '1'
+    mov bx, 10              ; divisor para decimal
+
+convert_loop:
+    ; DX:AX / 10
+    xor dx, dx              ; preparar DX para DIV
+    div bx                  ; AX / 10 -> AL=quotient, AH=remainder?   
+                            ; En modo 16 bits: necesitamos simular 32-bit, así que hacemos manual
+    ; Para 32-bit simulados:
+    ; Implementación simplificada usando DX:AX
+    ; AH = residuo
+    ; Guardar residuo
+    push dx                 ; residuo
+    inc cx
+    ; Actualizar DX:AX -> siguiente división
+    ; (implementar manual si quieres precisión de 32-bit)
+    
+    cmp ax, 0
+    jne convert_loop
+
+print_loop:
+    pop dx                  ; residuo
+    add dl, '0'             ; convertir a ASCII
     mov ah, 02h
+    mov dl, dl
     int 21h
-    mov dl, '0'
-    mov ah, 02h
-    int 21h
-    mov dl, '0'
-    mov ah, 02h
-    int 21h
-    jmp done
+    loop print_loop
 
-not_hundred:
-    xor ah, ah
-    mov bl, 10
-    div bl          ; AL = decenas, AH = unidades(residuo)
-
-    mov cl, ah      ; Guarda las unidades antes de que AX sea sobreescrito
-
-    cmp al, 0
-    je print_unit ;Sino hay decenas, imprimir solo la unidad.
-
-    add al, '0' ;Convertir las descenas a ASCII
-    mov dl, al
-    mov ah, 02h
-    int 21h ;imprimir decena
-
-print_unit:
-    mov dl,ch ;traer la unidad guardada
-    add cl, '0' ;ASCII unidad
-    mov dl, cl
-    mov ah, 02h
-    int 21h ; imprimir unidad
-
-done:
-    pop cx
+    pop di
+    pop si
     pop dx
+    pop cx
+    pop bx
     pop ax
     ret
-print_decimal endp
+print_decimal32 endp
 
-end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
+
+end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)git
