@@ -36,7 +36,11 @@
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas dd 15 dup(0) ; cada nota sera 32 bits (4 bytes)
+    notas dd 15 dup(0) ; cada nota sera 32 bits (4 bytes) 
+    
+    enteros   dw 15 dup(0)    ; parte entera de cada estudiante
+    decimales dw 15 dup(0)    ; parte decimal de cada estudiante (5 decimales, multiplicado por 100000)
+
     
     ;variables de control
     contador db 0
@@ -109,137 +113,155 @@ Menu:
     je op5
 
 op1:
-    mov ax,0600h ;limpiar pantalla
-    mov bh,0fh ;0 color de fondo negro, f color de letra blanco
+    ; Limpiar pantalla
+    mov ax,0600h
+    mov bh,0fh        ; fondo negro, letra blanca
     mov cx,0000h
-    mov dx, 184Fh
+    mov dx,184Fh
     int 10h
     
+    ; Mover cursor a (0,0)
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
     
+    ; Mostrar mensaje de instrucción
     mov dx, offset miNombre
     mov ah,09
     int 21h
 
-    ;Codigo de Alex de ingresado y guardado de datos:
-    mov bx, 15 ; pedir 15 estudiantes
-    ingresar_dato_op1Loop:
+    mov bx,15 ; cantidad de estudiantes a ingresar
+ingresar_dato_op1Loop:
+    ; Mostrar mensaje con contador
+    mov ah, 09h
+    lea dx, msg_contador
+    int 21h
+    call mostrar_numero
 
-        ;Mostrar mensaje con contador
-        mov ah, 09h
-        lea dx, msg_contador
-        int 21h
+    ; Mostrar "/15"
+    mov ah, 09h
+    lea dx, msg_total
+    int 21h
 
-        ;Mostrar el numero
-        call mostrar_numero
+    ; Mostrar formato de ingreso
+    mov ah,09
+    lea dx, msg_formato
+    int 21h
 
-        ;Mostrar "/15"
-        mov ah, 09h
-        lea dx, msg_total
-        int 21h
+    ; Pedir datos
+    mov ah, 0Ah
+    lea dx, buffer
+    int 21h
 
-        ;Mostar mensaje de formato
-        mov ah, 09h
-        lea dx, msg_formato
-        int 21h
+    ; Revisar si presionó ESC
+    mov al, [buffer+2]
+    cmp al, 27
+    je Menu
 
-        ;Mostrar mensaje para ingresar datos
-        mov ah, 09h
-        lea dx, msg_ingresar
-        int 21h
+    ; Limpiar ENTER al final de la cadena
+    mov si, offset buffer
+    mov cl, [si+1]
+    mov byte ptr [si+2+cx], '$'
 
-        ;Pedir datos
-        mov ah, 0Ah ;pausa y captura de dato
-        lea dx, buffer
-        int 21h
+    ; Separar nombres y apellidos
+    call separar_datos_nombres
 
-        ; Revisar si el primer caracter ingresado fue ESC (27) para poder salir del bucle en cualquier momento
-        mov al, [buffer+2]   ; el primer caracter real
-        cmp al, 27
-        je Menu              ; si fue ESC, saltar al menú
-        
-        ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
-        mov si, offset buffer
-        mov cl, [si+1]              ; longitud real
-        mov byte ptr [si+2+cx], '$' ; sustituir el Enter por fin de cadena
+    ; Extraer nota (llenar enteros y decimales)
+    lea si, buffer
+    add si, 2           ; saltar longitud
+    call extraer_nota_5dec_seg
 
-        ;Separar y guardar datos
-        call separar_datos
+    ; Mostrar inmediatamente la nota en XX.YYYYY
+    call print_nota_seg
 
-        ;Incrementar contador
-        inc contador
+    ; Salto de línea
+    mov dl,13
+    mov ah,02h
+    int 21h
+    mov dl,10
+    int 21h
 
-        mov ah, 09h
-        lea dx, nueva_linea
-        int 21h
+    ; Incrementar contador
+    inc contador
 
-        ;Loop principal
-        dec bx
-        jnz ingresar_dato_op1Loop
+    ; Salto de línea
+    mov ah,09h
+    lea dx,nueva_linea
+    int 21h
 
-        ;Mostrar mensaje de completado
-        mov ah, 09h
-        lea dx, msg_completado
-        int 21h
+    dec bx
+    jnz ingresar_dato_op1Loop
 
-        jmp Menu; Sin esto caería a la opcion 2 al terminar.s
+; Mostrar mensaje de completado
+mov ah,09
+lea dx,msg_completado
+int 21h
+
+jmp Menu
+
 
 op2:
-    mov ax,0600h          ; Limpiar pantalla
-    mov bh, 1eh           ; Fondo azul, letra amarilla
-    mov cx,0000
+    ; Limpiar pantalla
+    mov ax,0600h
+    mov bh,1eh        ; fondo azul, letra amarilla
+    mov cx,0000h
     mov dx,184Fh
     int 10h
 
-    mov ah,02h             ; mover cursor a (0,0)
+    ; Mover cursor a (0,0)
+    mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
 
+    ; Mostrar encabezado de estadísticas
     mov dx, offset estadisticas
     mov ah,09
     int 21h
 
-    ; ----------------------
-    ; Imprimir notas de 32 bits
-    ; ----------------------
-    mov cl, contador       ; cantidad de estudiantes ingresados
-    jcxz fin_op2           ; si no hay, saltar
+    ; Verificar si hay estudiantes
+    mov al, contador
+    cmp al, 0
+    je fin_op2      ; si no hay datos, saltar
 
-    mov si, offset notas   ; apuntar al inicio del array de notas (32 bits por estudiante)
+    ; Mostrar notas
+    lea si, notas       ; SI apunta al inicio del array de notas
+    mov cl, contador    ; cantidad de estudiantes
 
 imprimir_notas_op2:
-    ; Cargar la nota simulada de 32 bits en DX:AX
-    mov ax, [si]           ; 16 bits bajos
-    mov dx, [si+2]         ; 16 bits altos
-    call print_decimal32    ; imprimir nota
-    ; imprimir espacio
+    ; Llamar a la función corregida para imprimir con decimales
+    call print_decimal5_fixed
+
+    ; imprimir un espacio entre notas
     mov dl, ' '
     mov ah, 02h
     int 21h
 
-    add si, 4              ; avanzar al siguiente entero de 32 bits
-    loop imprimir_notas_op2
+    add si, 4         ; avanzar al siguiente entero de 32 bits
+    dec cl
+    jnz imprimir_notas_op2
 
 fin_op2:
-    ; salto de línea final
+    ; Salto de línea final
     mov dl, 13
     mov ah, 02h
     int 21h
     mov dl, 10
+    mov ah, 02h
     int 21h
 
-    ; pausa hasta tecla
+    ; Pausa hasta tecla
     mov ah,08h
     int 21h
-    cmp al,27              ; ESC para volver al menú
+    cmp al,27         ; ESC para volver al menú
     je Menu
     jmp Menu
+
+
+
 
 
 op3: 
@@ -393,7 +415,7 @@ op4:
 
 imprimir_notas_loop:
     mov al, [si]         ; AL = nota actual
-    call print_decimal32   ; imprime la nota
+    call print_decimal16   ; imprime la nota
 
     ; imprimir un espacio entre notas
     mov dl, ' '
@@ -426,53 +448,70 @@ op5: ;salida
     main endp ; Con este cierra el procedimiento(funcion) principal, o loop principal.
 
 ;Apartir de aca se ponen los procedimientos auxiliares o funciones auxiliares.
-separar_datos proc ;Para el ingresado de datos, por separarlos para que las distintas funciones puedan saber como interpretar los notas extraidas por ejemplo
+;--------------------------------------
+; PROCEDIMIENTO: separar_datos
+;--------------------------------------
+separar_datos proc
     push ax
     push bx
     push cx
+    push dx
     push si
     push di
 
-    lea si, buffer + 2 ; SI apunta al inicio de los datos
-
-    ; 1. Extraer nombre hasta la primer coma
+    lea si, buffer + 2     ; inicio de cadena
+    ;----------------------------------
+    ; 1. Extraer Nombre
     lea di, nombres
-    mov al, contador
-    mov bl, 20
-    mul bl
+    xor ax, ax
+    mov al, contador       ; AL = contador (0..14)
+    mov ah, 0
+    mov bx, 20             ; tamaño fijo de cada nombre
+    mul bx                 ; AX = contador*20
     add di, ax
     call extraer_campo
 
-    ; 2. Extraer Apellido 1
+    ;----------------------------------
+    ; 2. Extraer Apellido1
     lea di, apellidos1
+    xor ax, ax
     mov al, contador
-    mov bl, 20
-    mul bl
+    mov ah, 0
+    mov bx, 20
+    mul bx
     add di, ax
     call extraer_campo
 
-    ; 3.Extraer Apellidos 2
+    ;----------------------------------
+    ; 3. Extraer Apellido2
     lea di, apellidos2
+    xor ax, ax
     mov al, contador
-    mov bl, 20
-    mul bl
+    mov ah, 0
+    mov bx, 20
+    mul bx
     add di, ax
     call extraer_campo
 
-    ; 4.Extraer Nota
+    ;----------------------------------
+    ; 4. Extraer Nota (32 bits)
     lea di, notas
     xor ax, ax
     mov al, contador
-    add di, ax        ; cada nota ocupa 1 byte
-    call extraer_nota ; convertimos ASCII a número y guardamos en [di]
+    mov ah, 0
+    shl ax, 2              ; cada nota = 4 bytes
+    add di, ax
+    call extraer_nota_5dec_seg
 
     pop di
     pop si
+    pop dx
     pop cx
     pop bx
     pop ax
     ret
 separar_datos endp
+
 
 ; Proceso para extraer campo
 extraer_campo proc
@@ -603,10 +642,16 @@ fin_mostrar:
     pop ax
     ret
 mostrar_numero endp
+                    
+;------------------------------------------------------
 
-; Entrada: buffer contiene la cadena "80.63421"
-; Salida: DX:AX = entero simulado 8063421
-extraer_nota proc
+
+
+
+;--------------------------------------------------------
+; print_nota_seg - FIXED VERSION
+;--------------------------------------------------------
+print_nota_seg proc
     push ax
     push bx
     push cx
@@ -614,42 +659,164 @@ extraer_nota proc
     push si
     push di
 
-    lea si, buffer + 2      ; inicio de la cadena real
-    xor dx, dx              ; parte alta del entero
-    xor ax, ax              ; parte baja del entero
-    xor bx, bx              ; acumulador temporal
-    xor cx, cx              ; contador de dígitos procesados
+    ; Get integer part
+    mov bl, contador
+    mov bh, 0
+    shl bx, 1
+    mov si, offset enteros
+    add si, bx
+    mov ax, [si]      ; AX = integer part
 
-extraer_digito:
-    mov bl, [si]            ; tomar caracter
-    cmp bl, 13              ; fin de cadena
-    je fin_nota
-    cmp bl, '$'
-    je fin_nota
-    cmp bl, '.'             ; ignorar el punto decimal
-    je siguiente_caracter
+    call print_decimal16 ; print integer part
 
-    sub bl, '0'             ; convertir ASCII -> dígito 0-9
+    ; Print decimal point
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
 
-    ; Multiplicar entero actual DX:AX por 10
-    mov cx, ax
-    shl dx, 1               ; dx:ax * 2
-    rol ax, 1
-    shl dx, 3               ; dx:ax * 8 (total *10)
-    add ax, cx
-    adc dx, 0
+    ; Get decimal part (×100000)
+    mov si, offset decimales
+    add si, bx
+    mov ax, [si]      ; AX = decimal part × 100000
 
-    add ax, bx              ; sumamos el dígito actual
-    adc dx, 0
+    ; Print exactly 5 decimal digits
+    mov cx, 5
+    mov bx, 10000     ; initial divisor
+    
+print_decimal:
+    xor dx, dx
+    div bx             ; AX = digit, DX = remainder
+    
+    add al, '0'        ; convert to ASCII
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    ; Prepare for next digit
+    mov ax, dx         ; remainder becomes new dividend
+    push ax
+    mov ax, bx
+    mov bx, 10
+    xor dx, dx
+    div bx             ; BX = BX / 10
+    mov bx, ax
+    pop ax
+    
+    loop print_decimal
 
-    inc cx                  ; contador de dígitos
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+print_nota_seg endp
+
+     
+
+;--------------------------------------------------------
+; extraer_nota_5dec_seg - WORKING VERSION (FIXED DUPLICATE LABEL)
+;--------------------------------------------------------
+extraer_nota_5dec_seg proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    ; Encontrar inicio de la nota (después del segundo apellido)
+    call encontrar_inicio_nota
+    
+    ; Inicializar variables
+    xor ax, ax       ; AX = parte entera
+    xor bx, bx       ; BX = parte decimal
+    mov cx, 0        ; 0 = entero, 1 = decimal
+    mov dx, 0        ; contador de dígitos decimales
+
+procesar_caracter:
+    mov dl, [si]     ; Leer carácter (usamos DL en lugar de BL)
+    cmp dl, 13       ; Enter
+    je finalizar
+    cmp dl, '$'      ; Fin de cadena
+    je finalizar
+    cmp dl, ' '      ; Espacio
+    je finalizar
+    cmp dl, '.'      ; Punto decimal
+    je punto_decimal
+    
+    ; Es un dígito - convertir de ASCII a número
+    sub dl, '0'
+    
+    cmp cx, 0
+    jne procesar_decimal
+
+procesar_entero:
+    ; AX = AX * 10 + DL
+    push dx
+    mov dx, 10
+    mul dx
+    pop dx
+    add ax, dx
+    jmp siguiente_caracter
+
+procesar_decimal:
+    ; Solo procesar hasta 5 dígitos decimales
+    cmp dx, 5
+    jge siguiente_caracter
+    
+    ; BX = BX * 10 + DL (parte decimal)
+    push ax
+    push dx
+    mov ax, bx
+    mov dx, 10
+    mul dx
+    mov bx, ax
+    pop dx
+    pop ax
+    add bx, dx       ; Agregar el dígito convertido
+    inc dx           ; Incrementar contador de decimales
+    jmp siguiente_caracter
+
+punto_decimal:
+    mov cx, 1        ; Activar modo decimal
+    xor dx, dx       ; Reiniciar contador de decimales
+    jmp siguiente_caracter
 
 siguiente_caracter:
     inc si
-    jmp extraer_digito
+    jmp procesar_caracter
 
-fin_nota:
-    ; DX:AX tiene el entero simulado
+finalizar:
+    ; Rellenar con ceros si tenemos menos de 5 dígitos decimales
+    mov cx, 5
+    sub cx, dx
+    jle guardar_valores
+    
+rellenar_ceros_decimal:    ; <-- CHANGED LABEL NAME HERE
+    push ax
+    mov ax, bx
+    mov dx, 10
+    mul dx
+    mov bx, ax
+    pop ax
+    loop rellenar_ceros_decimal    ; <-- CHANGED LABEL NAME HERE
+
+guardar_valores:
+    ; Guardar valores en arrays
+    mov dl, contador
+    mov dh, 0
+    shl dx, 1
+    
+    mov di, offset enteros
+    add di, dx
+    mov [di], ax
+    
+    mov di, offset decimales
+    add di, dx
+    mov [di], bx
+
     pop di
     pop si
     pop dx
@@ -657,19 +824,124 @@ fin_nota:
     pop bx
     pop ax
     ret
-extraer_nota endp
+
+encontrar_inicio_nota:
+    ; Buscar el inicio de la nota (después del TERCER espacio)
+    mov cx, 3        ; Buscar 3 espacios (nombre + apellido1 + apellido2)  <-- CAMBIAR 2 POR 3
+buscar_espacios:
+    mov al, [si]
+    cmp al, ' '
+    jne continuar_busqueda
+    dec cx
+    jz encontrado
+continuar_busqueda:
+    inc si
+    jmp buscar_espacios
+encontrado:
+    inc si           ; Saltar el espacio
+    ; Ahora estamos después del TERCER espacio, donde comienza la nota
+    ret          ; Saltar el espacio
+
+extraer_nota_5dec_seg endp
+
+;--------------------------------------------------------
+; debug_print_values - PARA DEPURACIÓN
+; Muestra los valores almacenados en enteros y decimales
+;--------------------------------------------------------
+debug_print_values proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    mov ah, 09h
+    lea dx, debug_msg
+    int 21h
+    
+    ; Mostrar parte entera
+    mov bl, contador
+    mov bh, 0
+    shl bx, 1
+    mov si, offset enteros
+    add si, bx
+    mov ax, [si]
+    call print_decimal16
+    
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar parte decimal
+    mov si, offset decimales
+    add si, bx
+    mov ax, [si]
+    call print_decimal16
+    
+    mov dl, 13
+    mov ah, 02h
+    int 21h
+    mov dl, 10
+    int 21h
+    
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+debug_msg db 13,10,'DEBUG: Entero.Decimal = $'
+endp
 
 
-; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
-; Sale: imprime el número en pantalla
-; Update de correción: Se preservan los registros porque sino peta 
 
-; ------------------------------------------------------
-; print_decimal32: imprime DX:AX como número decimal
-; Entrada: DX:AX = entero 32 bits
-; Sale: número impreso en pantalla
-; ------------------------------------------------------
-print_decimal32 proc
+
+
+;--------------------------------------------------------
+; print_decimal16: imprime un número de 16 bits en AX
+; Entrada: AX = número 0–65535
+;--------------------------------------------------------
+print_decimal16 proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    mov si, offset buffer+50 ; apuntar al final del buffer
+    mov cx, 0                ; contador de dígitos
+
+convert_loop16:
+    xor dx, dx
+    mov bx, 10
+    div bx                    ; AX / 10 ? AX=cociente, DX=residuo
+    add dl, '0'
+    dec si
+    mov [si], dl
+    inc cx
+    cmp ax, 0
+    jne convert_loop16
+
+print_loop16:
+    mov dl, [si]
+    mov ah, 02h
+    int 21h
+    inc si
+    loop print_loop16
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+print_decimal16 endp
+
+ 
+
+; Entrada: SI -> dirección de la nota (4 bytes)
+print_decimal5_fixed proc
     push ax
     push bx
     push cx
@@ -677,38 +949,51 @@ print_decimal32 proc
     push si
     push di
 
-    ; Reservar buffer temporal para dígitos
-    lea si, buffer          ; usar buffer para almacenar dígitos
-    mov di, si              ; DI apunta al inicio del buffer
-    add di, 128             ; empezar desde el final del buffer
-    mov cx, 0               ; contador de dígitos
-
-    mov bx, 10              ; divisor para decimal
+    mov ax, [si]
+    mov dx, [si+2]     ; DX:AX = número completo
+    mov cx, 0          ; contador de dígitos
+    lea di, buffer+50  ; fin del buffer temporal
 
 convert_loop:
-    ; DX:AX / 10
-    xor dx, dx              ; preparar DX para DIV
-    div bx                  ; AX / 10 -> AL=quotient, AH=remainder?   
-                            ; En modo 16 bits: necesitamos simular 32-bit, así que hacemos manual
-    ; Para 32-bit simulados:
-    ; Implementación simplificada usando DX:AX
-    ; AH = residuo
-    ; Guardar residuo
-    push dx                 ; residuo
+    mov bx, 10
+    div bx             ; DX:AX / 10
+    add dl, '0'
+    dec di
+    mov [di], dl
     inc cx
-    ; Actualizar DX:AX -> siguiente división
-    ; (implementar manual si quieres precisión de 32-bit)
-    
-    cmp ax, 0
-    jne convert_loop
+    test ax, ax
+    jnz convert_loop
+    test dx, dx
+    jnz convert_loop
 
-print_loop:
-    pop dx                  ; residuo
-    add dl, '0'             ; convertir a ASCII
+    ; insertar punto decimal 5 posiciones desde el final
+    mov bx, 5
+    cmp cx, bx
+    jge tiene_decimales
+
+    ; si hay menos de 5 dígitos, rellenar con ceros
+rellenar_ceros:
+    dec di
+    mov byte ptr [di], '0'
+    inc cx
+    cmp cx, bx
+    jl rellenar_ceros
+
+tiene_decimales:
+    sub cx, 5
+    mov si, di
+    add si, cx
+    dec si
+    mov dl, '.'
     mov ah, 02h
-    mov dl, dl
     int 21h
-    loop print_loop
+
+imprimir_digitos:
+    mov dl, [di]
+    mov ah, 02h
+    int 21h
+    inc di
+    loop imprimir_digitos
 
     pop di
     pop si
@@ -717,7 +1002,56 @@ print_loop:
     pop bx
     pop ax
     ret
-print_decimal32 endp
+print_decimal5_fixed endp 
 
 
-end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)git
+;--------------------------------------------------------
+; PROCEDIMIENTO: separar_datos_nombres
+; Entrada: SI apunta al inicio del buffer del estudiante
+;          DI apunta al inicio del arreglo de nombres del estudiante actual
+;--------------------------------------------------------
+separar_datos_nombres proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    ;----------------------------------
+    ; 1. Extraer Nombre
+    mov bx,20           ; tamaño fijo del campo
+    call extraer_campo
+    ; DI ya apunta al final del nombre copiado
+    ; SI apunta al siguiente carácter en buffer
+
+    ;----------------------------------
+    ; 2. Extraer Apellido1
+    lea di, apellidos1
+    xor ax,ax
+    mov al, contador
+    mov ah,0
+    mul bx              ; offset = contador*20
+    add di, ax
+    call extraer_campo
+
+    ;----------------------------------
+    ; 3. Extraer Apellido2
+    lea di, apellidos2
+    xor ax,ax
+    mov al, contador
+    mov ah,0
+    mul bx              ; offset = contador*20
+    add di, ax
+    call extraer_campo
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+separar_datos_nombres endp
+
+end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
