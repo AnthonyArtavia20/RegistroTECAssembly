@@ -27,6 +27,8 @@
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
+    debug_msg db 13,10,'DEBUG - Nota guardada: $'
+    
     ;Buffer para entrada de nombre
     buffer db 128 ;maximo 50 caracteres + enter
             db ? ;espacio para longitud real
@@ -36,16 +38,15 @@
     nombres db 15 dup(20 dup('$'))  ;Nombres
     apellidos1 db 15 dup(20 dup('$')) ;Apellidos 1
     apellidos2 db 15 dup(20 dup('$')) ;Apellidos 2
-    notas dd 15 dup(0) ; cada nota sera 32 bits (4 bytes) 
-    
-    enteros   dw 15 dup(0)    ; parte entera de cada estudiante
-    decimales dw 15 dup(0)    ; parte decimal de cada estudiante (5 decimales, multiplicado por 100000)
-
+    notas db 15 dup(0) ;Notas 0-100, 1 bytes por nota 
+    notas_decimales db 15 dup(0)
     
     ;variables de control
     contador db 0
     nueva_linea db 13,10,'$'
-    temp db 0
+    temp db 0    
+    
+    msg_punto db '.$'
 
     ;logica de Alexs para el ingresado de datos ---END---
 
@@ -113,156 +114,108 @@ Menu:
     je op5
 
 op1:
-    ; Limpiar pantalla
-    mov ax,0600h
-    mov bh,0fh        ; fondo negro, letra blanca
+    mov ax,0600h ;limpiar pantalla
+    mov bh,0fh ;0 color de fondo negro, f color de letra blanco
     mov cx,0000h
-    mov dx,184Fh
+    mov dx, 184Fh
     int 10h
     
-    ; Mover cursor a (0,0)
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
     
-    ; Mostrar mensaje de instrucción
     mov dx, offset miNombre
     mov ah,09
     int 21h
 
-    mov bx,15 ; cantidad de estudiantes a ingresar
-ingresar_dato_op1Loop:
-    ; Mostrar mensaje con contador
-    mov ah, 09h
-    lea dx, msg_contador
-    int 21h
-    call mostrar_numero
+    ;Codigo de Alex de ingresado y guardado de datos:
+    mov bx, 15 ; pedir 15 estudiantes
+    ingresar_dato_op1Loop:
 
-    ; Mostrar "/15"
-    mov ah, 09h
-    lea dx, msg_total
-    int 21h
+        ;Mostrar mensaje con contador
+        mov ah, 09h
+        lea dx, msg_contador
+        int 21h
 
-    ; Mostrar formato de ingreso
-    mov ah,09
-    lea dx, msg_formato
-    int 21h
+        ;Mostrar el numero
+        call mostrar_numero
 
-    ; Pedir datos
-    mov ah, 0Ah
-    lea dx, buffer
-    int 21h
+        ;Mostrar "/15"
+        mov ah, 09h
+        lea dx, msg_total
+        int 21h
 
-    ; Revisar si presionó ESC
-    mov al, [buffer+2]
-    cmp al, 27
-    je Menu
+        ;Mostar mensaje de formato
+        mov ah, 09h
+        lea dx, msg_formato
+        int 21h
 
-    ; Limpiar ENTER al final de la cadena
-    mov si, offset buffer
-    mov cl, [si+1]
-    mov byte ptr [si+2+cx], '$'
+        ;Mostrar mensaje para ingresar datos
+        mov ah, 09h
+        lea dx, msg_ingresar
+        int 21h
 
-    ; Separar nombres y apellidos
-    call separar_datos_nombres
+        ;Pedir datos
+        mov ah, 0Ah ;pausa y captura de dato
+        lea dx, buffer
+        int 21h
 
-    ; Extraer nota (llenar enteros y decimales)
-    lea si, buffer
-    add si, 2           ; saltar longitud
-    call extraer_nota_5dec_seg
+        ; Revisar si el primer caracter ingresado fue ESC (27) para poder salir del bucle en cualquier momento
+        mov al, [buffer+2]   ; el primer caracter real
+        cmp al, 27
+        je Menu              ; si fue ESC, saltar al menú
+        
+        ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
+        mov si, offset buffer
+        mov cl, [si+1]              ; longitud real
+        mov byte ptr [si+2+cx], '$' ; sustituir el Enter por fin de cadena
 
-    ; Mostrar inmediatamente la nota en XX.YYYYY
-    call print_nota_seg
+        ;Separar y guardar datos
+        call separar_datos
 
-    ; Salto de línea
-    mov dl,13
-    mov ah,02h
-    int 21h
-    mov dl,10
-    int 21h
+        ;Incrementar contador
+        inc contador
 
-    ; Incrementar contador
-    inc contador
+        mov ah, 09h
+        lea dx, nueva_linea
+        int 21h
 
-    ; Salto de línea
-    mov ah,09h
-    lea dx,nueva_linea
-    int 21h
+        ;Loop principal
+        dec bx
+        jnz ingresar_dato_op1Loop
 
-    dec bx
-    jnz ingresar_dato_op1Loop
+        ;Mostrar mensaje de completado
+        mov ah, 09h
+        lea dx, msg_completado
+        int 21h
 
-; Mostrar mensaje de completado
-mov ah,09
-lea dx,msg_completado
-int 21h
-
-jmp Menu
-
+        jmp Menu; Sin esto caería a la opcion 2 al terminar.s
 
 op2:
-    ; Limpiar pantalla
-    mov ax,0600h
-    mov bh,1eh        ; fondo azul, letra amarilla
+    mov ax,0600h ;limpiar pantalla
+    mov bh, 1eh ;1 fondo azul, e color de letra amarilla
     mov cx,0000h
     mov dx,184Fh
     int 10h
-
-    ; Mover cursor a (0,0)
+    
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
-
-    ; Mostrar encabezado de estadísticas
+    
     mov dx, offset estadisticas
     mov ah,09
     int 21h
-
-    ; Verificar si hay estudiantes
-    mov al, contador
-    cmp al, 0
-    je fin_op2      ; si no hay datos, saltar
-
-    ; Mostrar notas
-    lea si, notas       ; SI apunta al inicio del array de notas
-    mov cl, contador    ; cantidad de estudiantes
-
-imprimir_notas_op2:
-    ; Llamar a la función corregida para imprimir con decimales
-    call print_decimal5_fixed
-
-    ; imprimir un espacio entre notas
-    mov dl, ' '
-    mov ah, 02h
+    
+    mov ah,08 ;pausa y captura de datos
     int 21h
-
-    add si, 4         ; avanzar al siguiente entero de 32 bits
-    dec cl
-    jnz imprimir_notas_op2
-
-fin_op2:
-    ; Salto de línea final
-    mov dl, 13
-    mov ah, 02h
-    int 21h
-    mov dl, 10
-    mov ah, 02h
-    int 21h
-
-    ; Pausa hasta tecla
-    mov ah,08h
-    int 21h
-    cmp al,27         ; ESC para volver al menú
+    cmp al,27 ;ASCII 27 = ESC
     je Menu
+
     jmp Menu
-
-
-
-
 
 op3: 
     
@@ -331,114 +284,188 @@ op4:
     ;Se neesitan hacer comparacion e intercambio de posiciones
     
     BubbleAscendente:
-        ; Configurar segmentos
-        PUSH DS ;se guarda el valor del registro de segmento de datos en la pila, para preservar el estado antes de moficarlo.
-        MOV AX, @data ;todo el segmento de datos cargado en AX
-        MOV DS, AX ;DS = segmento de datos
-        MOV ES, AX  ;para copias
+    ; Configurar segmentos
+    PUSH DS
+    MOV AX, @data
+    MOV DS, AX
+    MOV ES, AX
 
-        ; Ciclo externo
-        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
-        dec cl ;cl-1, es decir numero de pasadas necesarias.
-        jz fin_sort ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
+    ; Ciclo externo
+    mov cl, contador
+    dec cl
+    jz fin_sort
 
-        CICLO_EXTERNO:
-            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
-            mov ch, 0 ; CH = 0 deja limpio el registro.
-            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
+    CICLO_EXTERNO:
+        lea si, notas ; Parte entera
+        lea di, notas_decimales ; Parte decimal
+        mov ch, 0
+        mov bl, cl ; Ciclo interno
 
-        CICLO_INTERNO:
-            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
-            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
-            cmp al, dl ;aca es cuando se compara y se decide.
-            JBE NO_SWAP ;Si AL <= DL entonces no se haec swap...
-            mov [si], dl ; Si AL >= DL entonces en nota[i] se pone el valor mayor
-            mov [si+1], al ; y en nota[i+1] pones el valor menor.
-        NO_SWAP:
-            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
-            dec bl ;y se decrementa BL para hacer una compración menos
-            jnz CICLO_INTERNO ; Si BL distinto de 0, sigue comparando.
+    CICLO_INTERNO:
+        ; Preservar registros
+        push bx
+        push si
+        push di
+        
+        mov al, [si] ; Nota entera actual
+        mov dl, [si+1] ; Nota entera siguiente
+        
+        ; Comparar partes enteras
+        cmp al, dl
+        JBE NO_SWAP ; Si AL <= DL, no intercambiar
+        
+        ; INTERCAMBIAR partes enteras
+        mov [si], dl
+        mov [si+1], al
+        
+        ; INTERCAMBIAR partes decimales correspondientes
+        mov al, [di] ; Decimal actual
+        mov dl, [di+1] ; Decimal siguiente
+        mov [di], dl
+        mov [di+1], al
+        
+    NO_SWAP:
+        ; Recuperar registros
+        pop di
+        pop si
+        pop bx
+        
+        inc si ; Siguiente posición en array de enteras
+        inc di ; Siguiente posición en array de decimales
+        dec bl
+        jnz CICLO_INTERNO
 
-            dec cl ;una pasada menos
-            jnz CICLO_EXTERNO ;si aun faltan pasadas, repite.
-        fin_sort:
-
-            jmp salir ;Para que no siga con el codigo de Descendente
+        dec cl
+        jnz CICLO_EXTERNO
+    fin_sort:
+        jmp salir ;Para que no siga con el codigo de Descendente
 
     BubbleDescendente:
-        ; Configurar segmentos
-        PUSH DS
-        MOV AX, @data ;todo el segmento de datos cargado en AX
-        MOV DS, AX ;DS = segmento de datos
-        MOV ES, AX  ;para copias
+    ; Configurar segmentos
+    PUSH DS
+    MOV AX, @data
+    MOV DS, AX
+    MOV ES, AX
 
-        ; Ciclo externo
-        mov cl, contador ;Se aprovecha que el contador se actualizó con la cantidad de ingresos que hubieron, entonces esas van a ser la cantidad de comparaciones que haga.
-        dec cl ;cl-1, es decir numero de pasadas necesarias.
-        jz fin_sortDescen ;Si no hay elementos, salta al final. (tremendo error pegaba esto)
+    ; Ciclo externo
+    mov cl, contador
+    dec cl
+    jz fin_sortDescen
 
-        CICLO_EXTERNODescen:
-            lea si, notas ;Pasa la dirección base de memoria de las notas, o la array donde están las notas
-            mov ch, 0 ; CH = 0 deja limpio el registro.
-            mov bl, cl ;Ciclo interno, cantidad de compraciones por pasada dadas por el contador.
+    CICLO_EXTERNODescen:
+        lea si, notas ; Parte entera
+        lea di, notas_decimales ; Parte decimal
+        mov ch, 0
+        mov bl, cl ; Ciclo interno
 
-        CICLO_INTERNODescen:
-            mov al, [si] ;Se pasa el valor del indice que se encuentra en la direccion de la lista notas.
-            mov dl, [si+1] ;Se incremeneta 1 a la actual para que así pueda comparar con el siguiente.
-            cmp al, dl ;aca es cuando se compara y se decide.
-            JAE NO_SWAPDescen ;“Jump if Above or Equal” = si AL = DL entonces ya está en orden descendente ? no swap..
-            mov [si], dl ; Si AL < DL ? sí hay swap, porque en descendente queremos que el mayor quede primero.
-            mov [si+1], al ; y en nota[i+1] pones el valor menor.
-        NO_SWAPDescen:
-            inc si ;Como no hay que hacer swap avanzamos SI a lsiguiente indice
-            dec bl ;y se decrementa BL para hacer una compración menos
-            jnz CICLO_INTERNODescen ; Si BL distinto de 0, sigue comparando.
+    CICLO_INTERNODescen:
+        ; Preservar registros
+        push bx
+        push si
+        push di
+        
+        mov al, [si] ; Nota entera actual
+        mov dl, [si+1] ; Nota entera siguiente
+        
+        ; Comparar partes enteras (orden descendente)
+        cmp al, dl
+        JAE NO_SWAPDescen ; Si AL >= DL, no intercambiar (descendente)
+        
+        ; INTERCAMBIAR partes enteras
+        mov [si], dl
+        mov [si+1], al
+        
+        ; INTERCAMBIAR partes decimales correspondientes
+        mov al, [di] ; Decimal actual
+        mov dl, [di+1] ; Decimal siguiente
+        mov [di], dl
+        mov [di+1], al
+        
+    NO_SWAPDescen:
+        ; Recuperar registros
+        pop di
+        pop si
+        pop bx
+        
+        inc si ; Siguiente posición en array de enteras
+        inc di ; Siguiente posición en array de decimales
+        dec bl
+        jnz CICLO_INTERNODescen
 
-            dec cl ;una pasada menos
-            jnz CICLO_EXTERNODescen ;si aun faltan pasadas, repite.
-        fin_sortDescen:
+        dec cl
+        jnz CICLO_EXTERNODescen
+        
+    fin_sortDescen:
 
         salir: ;para que pueda seguir con la impresión de notas, simplemente un lugar donde saltar, brincadose todo el proceso de por medio, es como un return controlado.
 ;--------Inicio impresion de notas----
-    ; Salto de línea antes de imprimir notas
-    mov dl, 13       ; Carriage return
-    mov ah, 02h
-    int 21h
-    mov dl, 10       ; Line feed
-    mov ah, 02h
-    int 21h
+; Salto de línea antes de imprimir notas
+mov dl, 13
+mov ah, 02h
+int 21h
+mov dl, 10
+mov ah, 02h
+int 21h
 
-    mov cl, contador     ; cantidad de notas
-    jcxz fin_impresion   ; si contador = 0, no hay nada que imprimir
+mov cl, contador
+jcxz fin_impresion
 
-    mov si, offset notas ; SI apunta al inicio del arreglo
+mov si, offset notas ; Parte entera
+mov di, offset notas_decimales ; Parte decimal
 
 imprimir_notas_loop:
-    mov al, [si]         ; AL = nota actual
-    call print_decimal16   ; imprime la nota
+    ; Imprimir parte entera
+    mov al, [si]
+    call print_decimal
+    
+    ; Imprimir punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Imprimir parte decimal - MÉTODO CORREGIDO
+    mov al, [di]         ; Cargar parte decimal (ej: 12, 13, etc.)
+    
+    ; LIMPIAR COMPLETAMENTE AX antes de la división
+    xor ah, ah           ; Limpiar AH (IMPORTANTE!)
+    mov bl, 10
+    div bl               ; AL = decenas, AH = unidades
+    
+    ; Imprimir decenas
+    add al, '0'          ; Convertir a ASCII
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    ; Imprimir unidades
+    mov dl, ah
+    add dl, '0'          ; Convertir a ASCII
+    mov ah, 02h
+    int 21h
 
     ; imprimir un espacio entre notas
     mov dl, ' '
     mov ah, 02h
     int 21h
 
-    inc si ; Se asegura de avanzar al siguiente valor en la array
+    inc si ; Siguiente nota entera
+    inc di ; Siguiente nota decimal
     loop imprimir_notas_loop
 
 fin_impresion:
-    ; salto de línea final
-    mov dl, 13
-    mov ah, 02h
-    int 21h
-    mov dl, 10
-    int 21h
+; salto de línea final
+mov dl, 13
+mov ah, 02h
+int 21h
+mov dl, 10
+int 21h
 
-    ; pausa (esperar tecla)
-    mov ah,08h
-    int 21h
-    cmp al,27            ; ASCII 27 = ESC
-    je Menu
-    jmp Menu
+; pausa (esperar tecla)
+mov ah,08h
+int 21h
+cmp al,27
+je Menu
+jmp Menu
 ;--------Fin impresion de notas----
 
 op5: ;salida
@@ -448,70 +475,110 @@ op5: ;salida
     main endp ; Con este cierra el procedimiento(funcion) principal, o loop principal.
 
 ;Apartir de aca se ponen los procedimientos auxiliares o funciones auxiliares.
-;--------------------------------------
-; PROCEDIMIENTO: separar_datos
-;--------------------------------------
 separar_datos proc
+    push ax
+    push bx
+    push cx
+    push si
+    push di
+
+    lea si, buffer + 2 ; SI apunta al inicio de los datos
+
+    ; 1. Extraer nombre hasta la primer coma
+    lea di, nombres
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 2. Extraer Apellido 1
+    lea di, apellidos1
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 3.Extraer Apellidos 2
+    lea di, apellidos2
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    call extraer_campo
+
+    ; 4.Extraer Nota
+    lea di, notas
+    xor ax, ax
+    mov al, contador
+    add di, ax        ; cada nota ocupa 1 byte
+    call extraer_nota ; convertimos ASCII a número y guardamos en [di]   
+    
+    ; DEBUG: Mostrar lo que se guardó (PARTE ENTERA Y DECIMAL)
     push ax
     push bx
     push cx
     push dx
     push si
-    push di
-
-    lea si, buffer + 2     ; inicio de cadena
-    ;----------------------------------
-    ; 1. Extraer Nombre
-    lea di, nombres
-    xor ax, ax
-    mov al, contador       ; AL = contador (0..14)
-    mov ah, 0
-    mov bx, 20             ; tamaño fijo de cada nombre
-    mul bx                 ; AX = contador*20
-    add di, ax
-    call extraer_campo
-
-    ;----------------------------------
-    ; 2. Extraer Apellido1
-    lea di, apellidos1
-    xor ax, ax
+    
+    ; Mensaje de debug
+    mov ah, 09h
+    lea dx, debug_msg
+    int 21h
+    
+    ; Mostrar parte entera
+    mov si, di
+    mov al, [si]
+    call print_decimal
+    
+    ; Mostrar punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar parte decimal (CORREGIDO)
+    lea si, notas_decimales
     mov al, contador
-    mov ah, 0
-    mov bx, 20
-    mul bx
-    add di, ax
-    call extraer_campo
-
-    ;----------------------------------
-    ; 3. Extraer Apellido2
-    lea di, apellidos2
-    xor ax, ax
-    mov al, contador
-    mov ah, 0
-    mov bx, 20
-    mul bx
-    add di, ax
-    call extraer_campo
-
-    ;----------------------------------
-    ; 4. Extraer Nota (32 bits)
-    lea di, notas
-    xor ax, ax
-    mov al, contador
-    mov ah, 0
-    shl ax, 2              ; cada nota = 4 bytes
-    add di, ax
-    call extraer_nota_5dec_seg
-
-    pop di
+    xor ah, ah
+    add si, ax
+    mov al, [si]        ; AL = valor decimal (ej: 12 para 0.12)
+    
+    ; Mostrar como dos dígitos decimales
+    xor ah, ah
+    mov bl, 10
+    div bl              ; AL = decenas, AH = unidades
+    
+    ; Mostrar decenas
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar unidades
+    mov dl, ah
+    add dl, '0'
+    mov ah, 02h
+    int 21h
+    
+    ; Nueva línea
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
+    
     pop si
     pop dx
     pop cx
     pop bx
     pop ax
+
+    pop di
+    pop si
+    pop cx
+    pop bx
+    pop ax
     ret
 separar_datos endp
-
 
 ; Proceso para extraer campo
 extraer_campo proc
@@ -642,16 +709,8 @@ fin_mostrar:
     pop ax
     ret
 mostrar_numero endp
-                    
-;------------------------------------------------------
 
-
-
-
-;--------------------------------------------------------
-; print_nota_seg - FIXED VERSION
-;--------------------------------------------------------
-print_nota_seg proc
+extraer_nota proc 
     push ax
     push bx
     push cx
@@ -659,341 +718,103 @@ print_nota_seg proc
     push si
     push di
 
-    ; Get integer part
-    mov bl, contador
-    mov bh, 0
-    shl bx, 1
-    mov si, offset enteros
-    add si, bx
-    mov ax, [si]      ; AX = integer part
+    ; Encontrar el último espacio en la cadena
+    lea si, buffer + 2
+    mov cl, [buffer+1]   ; longitud de la cadena
+    mov ch, 0
+    add si, cx
+    dec si                ; apuntar al último caracter
 
-    call print_decimal16 ; print integer part
+    ; Buscar hacia atrás hasta encontrar un espacio
+buscar_ultimo_espacio:
+    cmp byte ptr [si], ' '
+    je encontro_espacio
+    dec si
+    jmp buscar_ultimo_espacio
 
-    ; Print decimal point
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
+encontro_espacio:
+    inc si               ; moverse al primer caracter de la nota
 
-    ; Get decimal part (×100000)
-    mov si, offset decimales
-    add si, bx
-    mov ax, [si]      ; AX = decimal part × 100000
-
-    ; Print exactly 5 decimal digits
-    mov cx, 5
-    mov bx, 10000     ; initial divisor
-    
-print_decimal:
-    xor dx, dx
-    div bx             ; AX = digit, DX = remainder
-    
-    add al, '0'        ; convert to ASCII
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    
-    ; Prepare for next digit
-    mov ax, dx         ; remainder becomes new dividend
-    push ax
-    mov ax, bx
-    mov bx, 10
-    xor dx, dx
-    div bx             ; BX = BX / 10
-    mov bx, ax
-    pop ax
-    
-    loop print_decimal
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-print_nota_seg endp
-
-     
-
-;--------------------------------------------------------
-; extraer_nota_5dec_seg - WORKING VERSION (FIXED DUPLICATE LABEL)
-;--------------------------------------------------------
-extraer_nota_5dec_seg proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-
-    ; Encontrar inicio de la nota (después del segundo apellido)
-    call encontrar_inicio_nota
-    
     ; Inicializar variables
-    xor ax, ax       ; AX = parte entera
-    xor bx, bx       ; BX = parte decimal
-    mov cx, 0        ; 0 = entero, 1 = decimal
-    mov dx, 0        ; contador de dígitos decimales
+    xor bx, bx           ; bx = parte entera (0-100)
+    xor cx, cx           ; cx = parte decimal (0-99)
+    mov dx, 0            ; dx = bandera (0=entera, 1=decimal)
 
-procesar_caracter:
-    mov dl, [si]     ; Leer carácter (usamos DL en lugar de BL)
-    cmp dl, 13       ; Enter
-    je finalizar
-    cmp dl, '$'      ; Fin de cadena
-    je finalizar
-    cmp dl, ' '      ; Espacio
-    je finalizar
-    cmp dl, '.'      ; Punto decimal
-    je punto_decimal
+convertir_numero:
+    mov al, [si]
     
-    ; Es un dígito - convertir de ASCII a número
-    sub dl, '0'
+    ; Si encontramos un punto, cambiar a parte decimal
+    cmp al, '.'
+    je encontro_punto
     
-    cmp cx, 0
+    ; Si encontramos el final, terminamos
+    cmp al, 13          ; enter
+    je fin_conversion
+    cmp al, ' '         ; espacio
+    je fin_conversion
+    cmp al, '$'         ; fin de cadena
+    je fin_conversion
+    
+    ; Verificar que es un dígito
+    cmp al, '0'
+    jb fin_conversion
+    cmp al, '9'
+    ja fin_conversion
+    
+    ; Convertir dígito ASCII a número
+    sub al, '0'
+    mov ah, 0
+    
+    ; ¿Estamos procesando parte entera o decimal?
+    cmp dx, 0
     jne procesar_decimal
 
-procesar_entero:
-    ; AX = AX * 10 + DL
-    push dx
-    mov dx, 10
-    mul dx
-    pop dx
-    add ax, dx
-    jmp siguiente_caracter
+    ; Procesar parte entera: bx = bx * 10 + ax
+    procesar_entera:
+        mov ax, bx
+        mov dx, 10
+        mul dx           ; dx:ax = ax * 10
+        mov bx, ax
+        mov al, [si]
+        sub al, '0'
+        mov ah, 0
+        add bx, ax
+        mov dx, 0        ; restaurar bandera
+        jmp continuar
 
-procesar_decimal:
-    ; Solo procesar hasta 5 dígitos decimales
-    cmp dx, 5
-    jge siguiente_caracter
+    ; Procesar parte decimal: cx = cx * 10 + ax
+    procesar_decimal:
+        mov ax, cx
+        mov dx, 10
+        mul dx           ; dx:ax = ax * 10
+        mov cx, ax
+        mov al, [si]
+        sub al, '0'
+        mov ah, 0
+        add cx, ax
+        mov dx, 1        ; mantener bandera decimal
+        jmp continuar
+
+    encontro_punto:
+        mov dx, 1        ; activar bandera de parte decimal
+        jmp continuar
+
+    continuar:
+        inc si
+        jmp convertir_numero
+
+fin_conversion:
+    ; Guardar parte entera en el array original
+    mov [di], bl
     
-    ; BX = BX * 10 + DL (parte decimal)
-    push ax
-    push dx
-    mov ax, bx
-    mov dx, 10
-    mul dx
-    mov bx, ax
-    pop dx
-    pop ax
-    add bx, dx       ; Agregar el dígito convertido
-    inc dx           ; Incrementar contador de decimales
-    jmp siguiente_caracter
-
-punto_decimal:
-    mov cx, 1        ; Activar modo decimal
-    xor dx, dx       ; Reiniciar contador de decimales
-    jmp siguiente_caracter
-
-siguiente_caracter:
-    inc si
-    jmp procesar_caracter
-
-finalizar:
-    ; Rellenar con ceros si tenemos menos de 5 dígitos decimales
-    mov cx, 5
-    sub cx, dx
-    jle guardar_valores
-    
-rellenar_ceros_decimal:    ; <-- CHANGED LABEL NAME HERE
-    push ax
-    mov ax, bx
-    mov dx, 10
-    mul dx
-    mov bx, ax
-    pop ax
-    loop rellenar_ceros_decimal    ; <-- CHANGED LABEL NAME HERE
-
-guardar_valores:
-    ; Guardar valores en arrays
-    mov dl, contador
-    mov dh, 0
-    shl dx, 1
-    
-    mov di, offset enteros
-    add di, dx
-    mov [di], ax
-    
-    mov di, offset decimales
-    add di, dx
-    mov [di], bx
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-encontrar_inicio_nota:
-    ; Buscar el inicio de la nota (después del TERCER espacio)
-    mov cx, 3        ; Buscar 3 espacios (nombre + apellido1 + apellido2)  <-- CAMBIAR 2 POR 3
-buscar_espacios:
-    mov al, [si]
-    cmp al, ' '
-    jne continuar_busqueda
-    dec cx
-    jz encontrado
-continuar_busqueda:
-    inc si
-    jmp buscar_espacios
-encontrado:
-    inc si           ; Saltar el espacio
-    ; Ahora estamos después del TERCER espacio, donde comienza la nota
-    ret          ; Saltar el espacio
-
-extraer_nota_5dec_seg endp
-
-;--------------------------------------------------------
-; debug_print_values - PARA DEPURACIÓN
-; Muestra los valores almacenados en enteros y decimales
-;--------------------------------------------------------
-debug_print_values proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    
-    mov ah, 09h
-    lea dx, debug_msg
-    int 21h
-    
-    ; Mostrar parte entera
-    mov bl, contador
-    mov bh, 0
-    shl bx, 1
-    mov si, offset enteros
-    add si, bx
-    mov ax, [si]
-    call print_decimal16
-    
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    
-    ; Mostrar parte decimal
-    mov si, offset decimales
-    add si, bx
-    mov ax, [si]
-    call print_decimal16
-    
-    mov dl, 13
-    mov ah, 02h
-    int 21h
-    mov dl, 10
-    int 21h
-    
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-debug_msg db 13,10,'DEBUG: Entero.Decimal = $'
-endp
-
-
-
-
-
-;--------------------------------------------------------
-; print_decimal16: imprime un número de 16 bits en AX
-; Entrada: AX = número 0–65535
-;--------------------------------------------------------
-print_decimal16 proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-
-    mov si, offset buffer+50 ; apuntar al final del buffer
-    mov cx, 0                ; contador de dígitos
-
-convert_loop16:
-    xor dx, dx
-    mov bx, 10
-    div bx                    ; AX / 10 ? AX=cociente, DX=residuo
-    add dl, '0'
-    dec si
-    mov [si], dl
-    inc cx
-    cmp ax, 0
-    jne convert_loop16
-
-print_loop16:
-    mov dl, [si]
-    mov ah, 02h
-    int 21h
-    inc si
-    loop print_loop16
-
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-print_decimal16 endp
-
- 
-
-; Entrada: SI -> dirección de la nota (4 bytes)
-print_decimal5_fixed proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
+    ; Guardar parte decimal en el nuevo array
     push di
-
-    mov ax, [si]
-    mov dx, [si+2]     ; DX:AX = número completo
-    mov cx, 0          ; contador de dígitos
-    lea di, buffer+50  ; fin del buffer temporal
-
-convert_loop:
-    mov bx, 10
-    div bx             ; DX:AX / 10
-    add dl, '0'
-    dec di
-    mov [di], dl
-    inc cx
-    test ax, ax
-    jnz convert_loop
-    test dx, dx
-    jnz convert_loop
-
-    ; insertar punto decimal 5 posiciones desde el final
-    mov bx, 5
-    cmp cx, bx
-    jge tiene_decimales
-
-    ; si hay menos de 5 dígitos, rellenar con ceros
-rellenar_ceros:
-    dec di
-    mov byte ptr [di], '0'
-    inc cx
-    cmp cx, bx
-    jl rellenar_ceros
-
-tiene_decimales:
-    sub cx, 5
-    mov si, di
-    add si, cx
-    dec si
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-
-imprimir_digitos:
-    mov dl, [di]
-    mov ah, 02h
-    int 21h
-    inc di
-    loop imprimir_digitos
+    lea di, notas_decimales
+    mov al, contador
+    xor ah, ah
+    add di, ax
+    mov [di], cl
+    pop di
 
     pop di
     pop si
@@ -1002,56 +823,60 @@ imprimir_digitos:
     pop bx
     pop ax
     ret
-print_decimal5_fixed endp 
+extraer_nota endp
 
+; Entrada: AL = número 0–99, no soporta un 100 por ejemplo.
+; Sale: imprime el número en pantalla
+; Update de correción: Se preservan los registros porque sino peta 
 
-;--------------------------------------------------------
-; PROCEDIMIENTO: separar_datos_nombres
-; Entrada: SI apunta al inicio del buffer del estudiante
-;          DI apunta al inicio del arreglo de nombres del estudiante actual
-;--------------------------------------------------------
-separar_datos_nombres proc
+print_decimal proc
     push ax
-    push bx
-    push cx
     push dx
-    push si
-    push di
+    push cx ;PReserva el CX porque LOOP usa cx/cl, anteriormente al printear las notas lo hacía bien pero terminaba en bucle imprimiendo 
+    ;basura porque el contador se modificaba aquí adentro.
 
-    ;----------------------------------
-    ; 1. Extraer Nombre
-    mov bx,20           ; tamaño fijo del campo
-    call extraer_campo
-    ; DI ya apunta al final del nombre copiado
-    ; SI apunta al siguiente carácter en buffer
+    cmp al, 100
+    jne not_hundred
 
-    ;----------------------------------
-    ; 2. Extraer Apellido1
-    lea di, apellidos1
-    xor ax,ax
-    mov al, contador
-    mov ah,0
-    mul bx              ; offset = contador*20
-    add di, ax
-    call extraer_campo
+    ; Caso especial: 100
+    mov dl, '1'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    jmp done
 
-    ;----------------------------------
-    ; 3. Extraer Apellido2
-    lea di, apellidos2
-    xor ax,ax
-    mov al, contador
-    mov ah,0
-    mul bx              ; offset = contador*20
-    add di, ax
-    call extraer_campo
+not_hundred:
+    xor ah, ah
+    mov bl, 10
+    div bl          ; AL = decenas, AH = unidades(residuo)
 
-    pop di
-    pop si
-    pop dx
+    mov cl, ah      ; Guarda las unidades antes de que AX sea sobreescrito
+
+    cmp al, 0
+    je print_unit ;Sino hay decenas, imprimir solo la unidad.
+
+    add al, '0' ;Convertir las descenas a ASCII
+    mov dl, al
+    mov ah, 02h
+    int 21h ;imprimir decena
+
+print_unit:
+    mov dl,ch ;traer la unidad guardada
+    add cl, '0' ;ASCII unidad
+    mov dl, cl
+    mov ah, 02h
+    int 21h ; imprimir unidad
+
+done:
     pop cx
-    pop bx
+    pop dx
     pop ax
     ret
-separar_datos_nombres endp
+print_decimal endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
