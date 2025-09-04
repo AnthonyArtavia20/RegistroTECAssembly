@@ -27,7 +27,14 @@
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
     msg_error db 13,10, 'Error: Use formato Nombre-Apellido1-Apellido2-Nota',13,10,'$'
     
-    debug_msg db 13,10,'DEBUG - Nota guardada: $'
+      
+    
+    ; Mensajes para debug
+    debug_msg db 13,10,'DEBUG - Datos ingresados: $'
+    msg_nombre db 13,10,'DEBUG - Nombre extraido: $'
+    msg_apellido1 db 13,10,'DEBUG - Apellido1 extraido: $'
+    msg_apellido2 db 13,10,'DEBUG - Apellido2 extraido: $'
+    msg_nota db 13,10,'DEBUG - Nota extraida: $'
     
     ;Buffer para entrada de nombre
     buffer db 128 ;maximo 50 caracteres + enter
@@ -518,6 +525,8 @@ op5: ;salida
     main endp ; Con este cierra el procedimiento(funcion) principal, o loop principal.
 
 ;Apartir de aca se ponen los procedimientos auxiliares o funciones auxiliares.
+; ... (el resto del código se mantiene igual)
+
 separar_datos proc
     push ax
     push bx
@@ -527,13 +536,45 @@ separar_datos proc
 
     lea si, buffer + 2 ; SI apunta al inicio de los datos
 
-    ; 1. Extraer nombre hasta la primer coma
+    ; DEBUG: Mostrar datos completos ingresados
+    mov ah, 09h
+    lea dx, debug_msg
+    int 21h
+    
+    mov ah, 09h
+    lea dx, buffer + 2
+    int 21h
+    
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
+
+    ; 1. Extraer nombre hasta el primer espacio
     lea di, nombres
     mov al, contador
     mov bl, 20
     mul bl
     add di, ax
     call extraer_campo
+
+    ; DEBUG: Mostrar nombre extraído
+    mov ah, 09h
+    lea dx, msg_nombre
+    int 21h
+    
+    lea di, nombres
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    
+    mov ah, 09h
+    mov dx, di
+    int 21h
+    
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
 
     ; 2. Extraer Apellido 1
     lea di, apellidos1
@@ -543,7 +584,26 @@ separar_datos proc
     add di, ax
     call extraer_campo
 
-    ; 3.Extraer Apellidos 2
+    ; DEBUG: Mostrar apellido1 extraído
+    mov ah, 09h
+    lea dx, msg_apellido1
+    int 21h
+    
+    lea di, apellidos1
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    
+    mov ah, 09h
+    mov dx, di
+    int 21h
+    
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
+
+    ; 3. Extraer Apellido 2
     lea di, apellidos2
     mov al, contador
     mov bl, 20
@@ -551,69 +611,71 @@ separar_datos proc
     add di, ax
     call extraer_campo
 
-    ; 4.Extraer Nota
+    ; DEBUG: Mostrar apellido2 extraído
+    mov ah, 09h
+    lea dx, msg_apellido2
+    int 21h
+    
+    lea di, apellidos2
+    mov al, contador
+    mov bl, 20
+    mul bl
+    add di, ax
+    
+    mov ah, 09h
+    mov dx, di
+    int 21h
+    
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
+
+    ; 4. Extraer Nota
     lea di, notas
     xor ax, ax
     mov al, contador
     add di, ax        ; cada nota ocupa 1 byte
     call extraer_nota ; convertimos ASCII a número y guardamos en [di]   
     
-    ; DEBUG: Mostrar lo que se guardó (PARTE ENTERA Y DECIMAL)
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    
-    ; Mensaje de debug
+    ; DEBUG: Mostrar nota extraída
     mov ah, 09h
-    lea dx, debug_msg
+    lea dx, msg_nota
     int 21h
     
-    ; Mostrar parte entera
-    mov si, di
-    mov al, [si]
+    mov al, [di]
     call print_decimal
     
-    ; Mostrar punto decimal
     mov dl, '.'
     mov ah, 02h
     int 21h
     
-    ; Mostrar parte decimal (CORREGIDO)
     lea si, notas_decimales
     mov al, contador
     xor ah, ah
     add si, ax
-    mov al, [si]        ; AL = valor decimal (ej: 12 para 0.12)
+    mov al, [si]
     
-    ; Mostrar como dos dígitos decimales
+    ; Mostrar parte decimal
     xor ah, ah
     mov bl, 10
-    div bl              ; AL = decenas, AH = unidades
+    div bl
     
-    ; Mostrar decenas
     add al, '0'
     mov dl, al
     mov ah, 02h
     int 21h
     
-    ; Mostrar unidades
     mov dl, ah
     add dl, '0'
     mov ah, 02h
     int 21h
     
-    ; Nueva línea
     mov ah, 09h
     lea dx, nueva_linea
     int 21h
-    
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
 
     pop di
     pop si
