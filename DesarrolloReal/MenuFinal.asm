@@ -46,7 +46,34 @@
     nueva_linea db 13,10,'$'
     temp db 0    
     
-    msg_punto db '.$'
+    msg_punto db '.$'            
+    
+    ; Variables para conversión de números
+    temp_num dw 0
+    temp_buffer db 6 dup('$')
+        
+    ; Para estadísticas
+    msg_sin_datos db 13,10,'No hay datos de estudiantes. Presione cualquier tecla para continuar.$'
+    msg_promedio db 13,10,'Promedio: $'
+    msg_suma db 13,10,'Suma total: $'
+    msg_maxima db 13,10,'Nota maxima: $'
+    msg_minima db 13,10,'Nota minima: $'
+    
+    ; Variables para estadísticas
+    suma_entera dw 0
+    suma_decimal dw 0
+    promedio_entera db 0
+    promedio_decimal db 0
+    maxima_entera db 0
+    maxima_decimal db 0
+    minima_entera db 100
+    minima_decimal db 0   
+    
+    ; Para estadísticas de aprobados/reprobados
+    msg_aprobados db 13,10,'Estudiantes aprobados (>=70): $'
+    msg_reprobados db 13,10,'Estudiantes reprobados (<70): $'
+    aprobados db 0
+    reprobados db 0
 
     ;logica de Alexs para el ingresado de datos ---END---
 
@@ -210,6 +237,22 @@ op2:
     mov ah,09
     int 21h
     
+    ; Check if there are any students
+    mov al, contador
+    cmp al, 0
+    je no_data_op2
+    
+    ; Calculate statistics
+    call calcular_estadisticas
+    
+    jmp wait_esc_op2
+    
+no_data_op2:
+    mov dx, offset msg_sin_datos
+    mov ah, 09h
+    int 21h
+    
+wait_esc_op2:
     mov ah,08 ;pausa y captura de datos
     int 21h
     cmp al,27 ;ASCII 27 = ESC
@@ -878,5 +921,256 @@ done:
     pop ax
     ret
 print_decimal endp
+
+calcular_estadisticas proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Initialize variables
+    mov suma_entera, 0
+    mov suma_decimal, 0
+    mov aprobados, 0
+    mov reprobados, 0
+    mov maxima_entera, 0
+    mov maxima_decimal, 0
+    mov minima_entera, 100
+    mov minima_decimal, 0
+    
+    ; Set up pointers
+    mov si, offset notas
+    mov di, offset notas_decimales
+    mov cl, contador
+    mov ch, 0
+    
+calcular_loop:
+    ; Add integer part to sum
+    mov al, [si]
+    mov ah, 0
+    add suma_entera, ax
+    
+    ; Add decimal part to sum
+    mov al, [di]
+    mov ah, 0
+    add suma_decimal, ax
+    
+    ; Check for carry-over from decimal part
+    cmp suma_decimal, 100
+    jb no_carry
+    sub suma_decimal, 100
+    inc suma_entera
+    
+no_carry:
+    ; Check if student passed (nota >= 70)
+    mov al, [si]
+    cmp al, 70
+    jb estudiante_reprobado
+    
+    ; If integer part is exactly 70, check decimal part
+    jne estudiante_aprobado
+    mov al, [di]
+    cmp al, 0
+    je estudiante_aprobado  ; 70.00 is passing
+    
+estudiante_aprobado:
+    inc aprobados
+    jmp check_max_min
+    
+estudiante_reprobado:
+    inc reprobados
+    
+check_max_min:
+    ; Check for maximum grade
+    mov al, [si]
+    cmp al, maxima_entera
+    jb check_minima
+    ja new_maxima
+    ; If integer parts are equal, check decimal parts
+    mov al, [di]
+    cmp al, maxima_decimal
+    jbe check_minima
+    
+new_maxima:
+    mov al, [si]
+    mov maxima_entera, al
+    mov al, [di]
+    mov maxima_decimal, al
+    jmp check_minima
+    
+check_minima:
+    ; Check for minimum grade
+    mov al, [si]
+    cmp al, minima_entera
+    ja next_student
+    jb new_minima
+    ; If integer parts are equal, check decimal parts
+    mov al, [di]
+    cmp al, minima_decimal
+    jae next_student
+    
+new_minima:
+    mov al, [si]
+    mov minima_entera, al
+    mov al, [di]
+    mov minima_decimal, al
+    
+next_student:
+    inc si
+    inc di
+    loop calcular_loop
+    
+    ; Calculate average
+    mov ax, suma_entera
+    mov bl, contador
+    div bl              ; AL = average integer part
+    mov promedio_entera, al
+    
+    ; Calculate decimal average
+    mov ax, suma_decimal
+    mov bl, contador
+    div bl              ; AL = average decimal part
+    mov promedio_decimal, al
+    
+    ; Display results
+    call mostrar_estadisticas
+    
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+calcular_estadisticas endp
+
+mostrar_estadisticas proc
+    push ax
+    push dx
+    
+    ; Show sum
+    call mostrar_suma_corregida
+    
+    ; Show average
+    mov dx, offset msg_promedio
+    mov ah, 09h
+    int 21h
+    
+    mov al, promedio_entera
+    call print_decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    mov al, promedio_decimal
+    call mostrar_decimal
+    
+    ; Show maximum grade
+    mov dx, offset msg_maxima
+    mov ah, 09h
+    int 21h
+    
+    mov al, maxima_entera
+    call print_decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    mov al, maxima_decimal
+    call mostrar_decimal
+    
+    ; Show minimum grade
+    mov dx, offset msg_minima
+    mov ah, 09h
+    int 21h
+    
+    mov al, minima_entera
+    call print_decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    mov al, minima_decimal
+    call mostrar_decimal
+    
+    ; Show approved students count
+    mov dx, offset msg_aprobados
+    mov ah, 09h
+    int 21h
+    
+    mov al, aprobados
+    call print_decimal
+    
+    ; Show failed students count
+    mov dx, offset msg_reprobados
+    mov ah, 09h
+    int 21h
+    
+    mov al, reprobados
+    call print_decimal
+    
+    pop dx
+    pop ax
+    ret
+mostrar_estadisticas endp      
+
+; Procedimiento para mostrar números decimales de 2 dígitos correctamente
+mostrar_decimal proc
+    push ax
+    push bx
+    push dx
+    
+    ; Mostrar como dos dígitos decimales
+    xor ah, ah
+    mov bl, 10
+    div bl              ; AL = decenas, AH = unidades
+    
+    ; Mostrar decenas
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar unidades
+    mov dl, ah
+    add dl, '0'
+    mov ah, 02h
+    int 21h
+    
+    pop dx
+    pop bx
+    pop ax
+    ret
+mostrar_decimal endp
+
+mostrar_suma_corregida proc
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Mostrar mensaje de suma
+    mov dx, offset msg_suma
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar parte entera de la suma
+    mov ax, suma_entera
+    call print_decimal
+    
+    ; Mostrar punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar parte decimal de la suma correctamente
+    mov al, byte ptr suma_decimal
+    call mostrar_decimal
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+mostrar_suma_corregida endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
