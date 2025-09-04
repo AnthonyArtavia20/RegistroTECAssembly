@@ -37,9 +37,9 @@
     msg_nota db 13,10,'DEBUG - Nota extraida: $'
     
     ;Buffer para entrada de nombre
-    buffer db 128 ;maximo 50 caracteres + enter
-            db ? ;espacio para longitud real
-            db 128 dup('$') ;espacio para el nombre se aumentó la capacidad
+    buffer db 50       ; máximo permitido = 50 chars
+            db ?        ; longitud real
+            db 50 dup(?) ; espacio real de caracteres (NO los llenés con '$')
 
     ;Array para almacenar los 15 nobres
     nombres db 15 dup(20 dup('$'))  ;Nombres
@@ -203,8 +203,11 @@ op1:
         
         ; --- limpiar el ENTER (0Dh) que el usuario implicitamente escribe al ingresar el nombre---
         mov si, offset buffer
-        mov cl, [si+1]              ; longitud real
-        mov byte ptr [si+2+cx], '$' ; sustituir el Enter por fin de cadena
+        mov cl, [buffer+1]       ; número de caracteres realmente leídos (incluye Enter)
+        mov bx, cx
+        add bx, 2
+        dec bx
+        mov byte ptr [buffer+bx], '$'
 
         ;Separar y guardar datos
         call separar_datos
@@ -534,7 +537,7 @@ separar_datos proc
     push si
     push di
 
-    lea si, buffer + 2 ; SI apunta al inicio de los datos
+    lea si, buffer+2 ; SI apunta al inicio de los datos
 
     ; DEBUG: Mostrar datos completos ingresados
     mov ah, 09h
@@ -694,9 +697,8 @@ separar_datos endp
 extraer_campo proc
     push ax
     push cx
-    ; NO push si, NO push di  <- importante: queremos que SI avance y quede actualizado para el llamador
 
-    mov cx, 0 ;contador de caracteres (si lo necesitas)
+    mov cx, 0 ;contador de caracteres
 
 extraer_caracter:
     mov al, [si]
@@ -714,18 +716,13 @@ extraer_caracter:
     jmp extraer_caracter
 
 fin_campo:
-    ; si el caracter actual es CR (13) o espacio o $, NO debemos comernos el próximo campo
-    ; avanzar SI si estamos ante un CR para pasar el enter (en tu flujo ya sustituiste enter por '$' en buffer)
-    ; pero mantendremos la lógica original: mover SI al siguiente caracter
-    ; (esto deja SI apuntando al caracter que terminó, por eso incrementamos para apuntar al siguiente)
-    ; Si [si] fue space o CR, incrementamos para mover al siguiente.
-    ; En tu código original hacías "inc si" aquí; lo hacemos también:
-    inc si
-
-    ; Terminar la cadena destino con '$' (para int21h func 09)
+    ; Terminar la cadena destino con '$'
     mov byte ptr [di], '$'
 
-    ; Saltar espacios adicionales en el origen
+    ; Avanzar SI una vez para saltar el separador
+    inc si
+
+    ; Saltar espacios adicionales (si hubiera varios)
 saltar_espacios:
     cmp byte ptr [si], ' '
     jne fin_skip_spaces
@@ -733,7 +730,6 @@ saltar_espacios:
     jmp saltar_espacios
 
 fin_skip_spaces:
-
     pop cx
     pop ax
     ret
