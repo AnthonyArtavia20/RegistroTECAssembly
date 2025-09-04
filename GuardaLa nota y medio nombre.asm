@@ -58,10 +58,6 @@
     msg_nombre_nota db 13,10,'Nombre: $'
     msg_nota db ' - Nota: $'
 
-    debug_msg db 13,10,'=== DEBUG - DATOS GUARDADOS ===',13,10,'$'
-    debug_buffer_msg db 'Buffer: $'
-    debug_nota_msg db ' - Nota: $'
-
     ; Ordenamiento de notas, bubblesort
     Ordenar db 'Ordenar notas, Como desea ordenarlas?',13,10,
             db 'Precione (1) Ascendente',13,10,
@@ -179,8 +175,6 @@ op1:
         ;Separar y guardar datos
         call separar_datos
 
-        call debug_mostrar_datos
-
         ;Incrementar contador
         inc contador
 
@@ -224,77 +218,77 @@ op2:
     jmp Menu
 
 op3: 
-        mov ax,0600h ;limpiar pantalla
-        mov bh, 1eh ;1 fondo azul, e color de letra amarilla
-        mov cx,0000h
-        mov dx,184Fh
-        int 10h
-        
-        mov ah,02h
-        mov bh,00
-        mov dh,00
-        mov dl,00
-        int 10h
-        
-        mov dx, offset buscar
-        mov ah,09
-        int 21h
-        
-        ; Verificar si hay estudiantes ingresados
-        mov al, contador
-        cmp al, 0
-        jne hay_estudiantes
-        
-        ; No hay estudiantes, mostrar mensaje
-        mov dx, offset msg_indice_invalido
-        mov ah,09
-        int 21h
-        mov ah,08
-        int 21h
-        jmp Menu
+    mov ax,0600h ;limpiar pantalla
+    mov bh, 1eh ;1 fondo azul, e color de letra amarilla
+    mov cx,0000h
+    mov dx,184Fh
+    int 10h
+    
+    mov ah,02h
+    mov bh,00
+    mov dh,00
+    mov dl,00
+    int 10h
+    
+    mov dx, offset buscar
+    mov ah,09
+    int 21h
+    
+    ; Verificar si hay estudiantes ingresados
+    mov al, contador
+    cmp al, 0
+    jne hay_estudiantes
+    
+    ; No hay estudiantes, mostrar mensaje
+    mov dx, offset msg_indice_invalido
+    mov ah,09
+    int 21h
+    mov ah,08
+    int 21h
+    jmp Menu
 
-    hay_estudiantes:
-        ; Pedir índice al usuario
-        mov ah, 09h
-        lea dx, msg_ingresar_indice
-        int 21h
-        
-        ; Leer entrada del usuario
-        mov ah, 01h
-        int 21h
-        
-        ; Verificar si presionó ESC
-        cmp al, 27
-        je Menu
-        
-        ; Convertir ASCII a número (1-9)
-        sub al, '0'
-        cmp al, 1
-        jb index_invalid
-        cmp al, 15
-        ja index_invalid
-        
-        ; Convertir a índice 0-based
-        dec al
-        mov bl, al
-        
-        ; Verificar que el índice sea válido
-        cmp bl, contador
-        jae index_invalid
-        
-        ; Mostrar estudiante
-        call mostrar_estudiante_indice
-        jmp esperar_tecla_op3
+hay_estudiantes:
+    ; Pedir índice al usuario
+    mov ah, 09h
+    lea dx, msg_ingresar_indice
+    int 21h
+    
+    ; Leer entrada del usuario
+    mov ah, 01h
+    int 21h
+    
+    ; Verificar si presionó ESC
+    cmp al, 27
+    je Menu
+    
+    ; Convertir ASCII a número (1-9)
+    sub al, '0'
+    cmp al, 1
+    jb index_invalid
+    cmp al, 15
+    ja index_invalid
+    
+    ; Convertir a índice 0-based
+    dec al
+    mov bl, al
+    
+    ; Verificar que el índice sea válido
+    cmp bl, contador
+    jae index_invalid
+    
+    ; Mostrar estudiante
+    call mostrar_estudiante_indice
+    jmp esperar_tecla_op3
 
-    index_invalid:
-        mov dx, offset msg_indice_invalido
-        mov ah,09
-        int 21h
+index_invalid:
+    mov dx, offset msg_indice_invalido
+    mov ah,09
+    int 21h
 
-    esperar_tecla_op3:
-        mov ah,08
-        int 21h
-        jmp Menu
+esperar_tecla_op3:
+    mov ah,08
+    int 21h
+    jmp Menu
 
 op4:
     mov ah,0
@@ -503,53 +497,41 @@ separar_datos proc ;Para el ingresado de datos, por separarlos para que las dist
     ret
 separar_datos endp
 
-; Proceso para extraer campo - VERSIÓN CORREGIDA Y SIMPLIFICADA
+; Proceso para extraer campo
 extraer_campo proc
     push ax
     push cx
     push si
     push di
 
-    ; Limpiar el campo destino (20 bytes con '$')
-    push di
-    mov cx, 20
-    mov al, '$'
-    rep stosb
-    pop di
-
-    mov cx, 0 ; contador de caracteres
+    mov cx, 0 ;contador de caracteres
 
 extraer_caracter:
     mov al, [si]
-    cmp al, ' '          ; espacio - fin de campo
+    cmp al, ' ' ; es -?
     je fin_campo
-    cmp al, 13           ; enter - fin de campo  
+    cmp al, 13 ; es enter?
     je fin_campo
-    cmp al, 0            ; null - fin de campo
-    je fin_campo
-    cmp al, '$'          ; fin de cadena
+    cmp al, '$' ;es el indicador de fin?
     je fin_campo
 
-    ; Verificar límite de 19 caracteres
-    cmp cx, 19
-    jae fin_campo
-
-    mov [di], al         ; copiar caracter
+    mov [di], al ;copiar caracter
     inc si
     inc di
     inc cx
     jmp extraer_caracter
 
 fin_campo:
-    ; Asegurar terminador de cadena
-    mov byte ptr [di], '$'
-    
-    ; Avanzar SI hasta el próximo no-espacio o fin
-avanzar_si:
-    inc si
+    inc si 
+
+saltar_espacios:
     cmp byte ptr [si], ' '
-    je avanzar_si
-    
+    jne fin_skip_spaces
+    inc si
+    jmp saltar_espacios
+
+fin_skip_spaces:
+
     pop di
     pop si
     pop cx
@@ -645,72 +627,56 @@ fin_mostrar:
     ret
 mostrar_numero endp
 
-extraer_nota proc
+extraer_nota proc ;Para poder sacar la nota de lo ingresado desde la op1, esto para que el bubbleSort pueda ordenarlas como números y no en otro formato raro coo ASCII o Binario
     push ax
     push bx
     push cx
     push si
     push di
 
-    ; Buscar desde el final del buffer
     lea si, buffer + 2
-    mov cl, [buffer+1]   ; longitud real
+    mov cl, [buffer+1]   ; longitud de cadena
     add si, cx
-    dec si               ; último caracter
-    
-    ; Buscar el último espacio (que separa apellido2 de nota)
-buscar_espacio:
-    cmp si, offset buffer + 2
-    jb error_nota
+    dec si                ; apuntar al último caracter antes del Enter
+
+;Si hay espacios al final, retrocede sobre ellos
+retrocede_espacios_finales:
     cmp byte ptr [si], ' '
-    je encontro_espacio
+    jne lista_para_buscar_sep
     dec si
-    jmp buscar_espacio
+    jmp retrocede_espacios_finales
 
-encontro_espacio:
-    inc si               ; primer dígito de la nota
-    xor bx, bx           ; acumulador = 0
+lista_para_buscar_sep:
+    ;retrocede hasya el espacio anterior
+retroceder:
+    cmp byte ptr [si], ' '
+    je inicio_parse
+    dec si
+    jmp retroceder
 
-parse_digitos:
+inicio_parse:
+    inc si               ; apuntar al primer dígito de la nota
+    xor bx, bx         ; acumulador BX = 0
+
+parse_loop: ;Acá es donde no se sabe como ocorregir lo del "2" de kas unidades, el problema es que el parseo si mantiene la decena pero no la unidad, corregir queda tiempo.
     mov al, [si]
-    cmp al, 13           ; Enter
+    cmp al, 13
     je fin_parse
-    cmp al, ' '          ; Espacio
+    cmp al, '$'
     je fin_parse
-    cmp al, 0            ; Null
-    je fin_parse
-    cmp al, '$'          ; Fin de cadena
-    je fin_parse
-    
-    ; Verificar que es dígito (0-9)
-    cmp al, '0'
-    jb error_nota
-    cmp al, '9'
-    ja error_nota
-    
-    ; Convertir ASCII a número y acumular
-    sub al, '0'
+    sub al, '0'      ; ASCII -> dígito
     mov ah, 0
-    mov cx, bx
-    mov bx, 10
-    mul bx              ; AX = número actual * 10
-    add ax, cx          ; AX = acumulado total
-    mov bx, ax
-    
+    mov cx, bx       ; guardar acumulador en CX
+    mov bx, ax       ; BX = dígito por ahora
+    mov ax, cx
+    mov cx, 10
+    mul cx           ; AX = acumulador*10
+    add bx, ax       ; BX = acumulador*10 + dígito actual
     inc si
-    jmp parse_digitos
-
+    jmp parse_loop
 fin_parse:
-    ; Validar rango 0-100
-    cmp bx, 100
-    ja error_nota
     mov [di], bl
-    jmp nota_ok
 
-error_nota:
-    mov byte ptr [di], 0  ; nota por defecto = 0
-
-nota_ok:
     pop di
     pop si
     pop cx
@@ -841,129 +807,5 @@ end_print:
     pop ax
     ret
 print_field endp
-
-; Procedimiento de depuración - mostrar todos los nombres guardados
-debug_mostrar_nombres proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    
-    mov ah, 09h
-    lea dx, nueva_linea
-    int 21h
-    
-    mov dx, offset debug_msg
-    int 21h
-    
-    mov cl, contador
-    cmp cl, 0
-    je debug_fin
-    
-    mov bl, 0
-
-debug_fin:
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-debug_mostrar_nombres endp
-
-debug_mostrar_datos proc
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    
-    mov ah, 09h
-    lea dx, nueva_linea
-    int 21h
-    lea dx, debug_msg
-    int 21h
-    
-    ; Mostrar buffer original
-    lea dx, debug_buffer_msg
-    int 21h
-    lea dx, buffer + 2
-    int 21h
-    lea dx, nueva_linea
-    int 21h
-    
-    ; Mostrar nombres guardados
-    mov cl, contador
-    cmp cl, 0
-    je debug_fin2
-    
-    mov bl, 0
-debug_loop:
-    ; Mostrar índice
-    mov dl, 'E'
-    mov ah, 02h
-    int 21h
-    mov dl, '0'
-    add dl, bl
-    inc dl
-    int 21h
-    mov dl, ':'
-    int 21h
-    mov dl, ' '
-    int 21h
-    
-    ; Mostrar nombre
-    mov al, bl
-    mov cl, 20
-    mul cl
-    lea si, nombres
-    add si, ax
-    
-    mov cx, 0
-debug_print_name:
-    mov dl, [si]
-    cmp dl, '$'
-    je debug_next
-    mov ah, 02h
-    int 21h
-    inc si
-    inc cx
-    cmp cx, 20
-    jb debug_print_name
-
-debug_next:
-    ; Mostrar nota
-    lea dx, debug_nota_msg
-    mov ah, 09h
-    int 21h
-    
-    lea si, notas
-    xor ax, ax
-    mov al, bl
-    add si, ax
-    mov al, [si]
-    call print_decimal
-    
-    ; Salto de línea
-    lea dx, nueva_linea
-    mov ah, 09h
-    int 21h
-    
-    inc bl
-    cmp bl, contador
-    jb debug_loop
-
-debug_fin2:
-    ; Pausa
-    mov ah, 08h
-    int 21h
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-debug_mostrar_datos endp
 
 end main ; Indica al ensamblador donde arrancar a ejecutar procedimientos(funciones)
