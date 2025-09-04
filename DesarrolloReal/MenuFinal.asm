@@ -686,32 +686,46 @@ separar_datos proc
 separar_datos endp
 
 ; Proceso para extraer campo
+; --------------------------------------------------
+; extraer_campo - copia desde [SI] hasta espacio/enter/$
+; Sale con SI apuntando al siguiente caracter después del campo (y saltados espacios)
+; DI es donde copia el campo (debe ser establecido por el llamador)
+; --------------------------------------------------
 extraer_campo proc
     push ax
     push cx
-    push si
-    push di
+    ; NO push si, NO push di  <- importante: queremos que SI avance y quede actualizado para el llamador
 
-    mov cx, 0 ;contador de caracteres
+    mov cx, 0 ;contador de caracteres (si lo necesitas)
 
 extraer_caracter:
     mov al, [si]
-    cmp al, ' ' ; es -?
+    cmp al, ' '
     je fin_campo
-    cmp al, 13 ; es enter?
+    cmp al, 13 ; enter
     je fin_campo
-    cmp al, '$' ;es el indicador de fin?
+    cmp al, '$' ; fin de cadena
     je fin_campo
 
-    mov [di], al ;copiar caracter
+    mov [di], al ; copiar caracter
     inc si
     inc di
     inc cx
     jmp extraer_caracter
 
 fin_campo:
-    inc si 
+    ; si el caracter actual es CR (13) o espacio o $, NO debemos comernos el próximo campo
+    ; avanzar SI si estamos ante un CR para pasar el enter (en tu flujo ya sustituiste enter por '$' en buffer)
+    ; pero mantendremos la lógica original: mover SI al siguiente caracter
+    ; (esto deja SI apuntando al caracter que terminó, por eso incrementamos para apuntar al siguiente)
+    ; Si [si] fue space o CR, incrementamos para mover al siguiente.
+    ; En tu código original hacías "inc si" aquí; lo hacemos también:
+    inc si
 
+    ; Terminar la cadena destino con '$' (para int21h func 09)
+    mov byte ptr [di], '$'
+
+    ; Saltar espacios adicionales en el origen
 saltar_espacios:
     cmp byte ptr [si], ' '
     jne fin_skip_spaces
@@ -720,8 +734,6 @@ saltar_espacios:
 
 fin_skip_spaces:
 
-    pop di
-    pop si
     pop cx
     pop ax
     ret
