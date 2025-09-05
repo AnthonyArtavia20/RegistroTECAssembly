@@ -1363,5 +1363,4 @@ mostrar_estudiante_por_indice endp
 end main
 
 main endp
-
 ocupo que me ayudes a reestructurar el codigo con el fin de manejarlo con 5 decimales en lugar de 2,  para conectar mejor lo demas quiero que se rellene con 0 en caso de que no alcance las cantidad maxima de decimales es decir 5 seria 5.00000 y 5.12 seria 5.12000
