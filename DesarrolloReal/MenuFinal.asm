@@ -144,6 +144,10 @@ op1:
 
     mov bx, 15
 ingresar_dato_op1Loop:
+    ; Verificar si ya se han procesado 15 estudiantes
+    mov al, contador
+    cmp al, 15
+    jae completado_op1  ; Si ya hay 15, saltar a completado
 
     mov byte ptr buffer+1, 0
     mov byte ptr buffer+2, 0
@@ -193,7 +197,7 @@ ingresar_dato_op1Loop:
     lea dx, buffer
     int 21h
 
-    ; NUEVO: Procesar nota con estructura optimizada
+    ; Procesar nota con estructura optimizada
     call procesar_nota_optimizado
 
     ; Mostrar estudiante guardado
@@ -210,6 +214,7 @@ ingresar_dato_op1Loop:
     dec bx
     jnz ingresar_dato_op1Loop
 
+completado_op1:
     mov ah, 09h
     lea dx, msg_completado
     int 21h
