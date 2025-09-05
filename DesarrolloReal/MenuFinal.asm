@@ -19,7 +19,7 @@
              db 'Formato: Nombre Apellido1 Apellido2 (en una linea)',13,10
              db 'Luego ingrese la nota por separado',13,10
              db 'Ejemplo: Juan Perez Garcia',13,10
-             db 'Nota: 85.50',13,10,13,10,'$'
+             db 'Nota: 85.50000',13,10,13,10,'$'
 
     ; Mensajes para ingreso de datos
     msg_ingresar_nombre_completo db 13,10,'Ingrese nombre y apellidos: $'
@@ -37,14 +37,13 @@
     msg_estudiante_indice db 13,10,10,'Estudiante en posicion $'
     msg_dos_puntos db ': $'
 
-
     ; Buffer para entrada de datos
     buffer db 50
             db ?
             db 50 dup('$')
 
-    ; Arrays para almacenar datos
-    estudiante_size equ 62  ; 20(nom) + 20(ape1) + 20(ape2) + 1(nota_ent) + 1(nota_dec)
+    ; Arrays para almacenar datos - MODIFICADO para 5 decimales
+    estudiante_size equ 65  ; 20(nom) + 20(ape1) + 20(ape2) + 1(nota_ent) + 4(5 decimales)
     estudiantes db 15 * estudiante_size dup('$') 
     
     ; Variables de control
@@ -55,22 +54,22 @@
     temp_num dw 0
     temp_buffer db 6 dup('$')
         
-    ; Para estadísticas
+    ; Para estadísticas - MODIFICADO para 5 decimales
     msg_sin_datos db 13,10,'No hay datos de estudiantes. Presione cualquier tecla para continuar.$'
     msg_promedio db 13,10,'Promedio: $'
     msg_suma db 13,10,'Suma total: $'
     msg_maxima db 13,10,'Nota maxima: $'
     msg_minima db 13,10,'Nota minima: $'
     
-    ; Variables para estadísticas
+    ; Variables para estadísticas - MODIFICADO para 5 decimales
     suma_entera dw 0
-    suma_decimal dw 0
+    suma_decimal dw 0      ; Ahora almacena 5 decimales (0-99999)
     promedio_entera db 0
-    promedio_decimal db 0
+    promedio_decimal dw 0  ; Ahora almacena 5 decimales
     maxima_entera db 0
-    maxima_decimal db 0
+    maxima_decimal dw 0    ; Ahora almacena 5 decimales
     minima_entera db 100
-    minima_decimal db 0   
+    minima_decimal dw 0    ; Ahora almacena 5 decimales   
     
     ; Para estadísticas de aprobados/reprobados
     msg_aprobados db 13,10,'Estudiantes aprobados (>=70): $'
@@ -205,10 +204,10 @@ ingresar_dato_op1Loop:
     int 21h
 
     ; Procesar nota con estructura optimizada
-    call procesar_nota_optimizado
+    call procesar_nota_5_decimales
 
     ; Mostrar estudiante guardado
-    call mostrar_estudiante_optimizado
+    call mostrar_estudiante_5_decimales
 
     ; Incrementar contador
     inc contador
@@ -251,7 +250,7 @@ op2:
     je no_data_op2
     
     ; Calculate statistics
-    call calcular_estadisticas
+    call calcular_estadisticas_5_decimales
     
     jmp wait_esc_op2
     
@@ -301,7 +300,7 @@ op3:
     ja indice_invalido_op3
     
     ; Mostrar estudiante
-    call mostrar_estudiante_por_indice
+    call mostrar_estudiante_por_indice_5_decimales
     jmp esperar_tecla_op3
     
 no_estudiantes_op3:
@@ -386,7 +385,7 @@ CICLO_INTERNO_ASC:
     add di, estudiante_size
     
     ; Comparar los dos estudiantes
-    call comparar_estudiantes
+    call comparar_estudiantes_5_decimales
     jnc NO_SWAP_ASC        ; Si CF=0, no intercambiar
     
     ; Intercambiar estudiantes
@@ -404,7 +403,7 @@ NO_SWAP_ASC:
     jnz CICLO_EXTERNO_ASC
 
 fin_sort:
-    jmp mostrar_notas_ordenadas
+    jmp mostrar_notas_ordenadas_5_decimales
 
 intercambiar_estudiantes proc
     push ax 
@@ -414,7 +413,7 @@ intercambiar_estudiantes proc
     push si 
     push di
     
-    ; Intercambiar los 62 bytes completos
+    ; Intercambiar los 65 bytes completos
     mov cx, estudiante_size
 intercambio_loop:
     mov al, [si]
@@ -434,40 +433,49 @@ intercambio_loop:
     ret
 intercambiar_estudiantes endp
 
-comparar_estudiantes proc
+comparar_estudiantes_5_decimales proc
     push ax
+    push bx
     push dx
     
     ; Comparar parte entera primero
     mov al, [si + 60]      ; Nota entera estudiante 1
     mov dl, [di + 60]      ; Nota entera estudiante 2
     cmp al, dl
-    jg mayor
-    jl menor
+    jg mayor_5
+    jl menor_5
     
-    ; Si partes enteras son iguales, comparar decimales
-    mov al, [si + 61]      ; Nota decimal estudiante 1
-    mov dl, [di + 61]      ; Nota decimal estudiante 2
-    cmp al, dl
-    jg mayor
-    jl menor
+    ; Si partes enteras son iguales, comparar decimales (5 dígitos)
+    mov ax, [si + 61]      ; Nota decimal estudiante 1
+    mov dx, [di + 61]      ; Nota decimal estudiante 2
+    mov bx, [si + 63]      ; Continuación decimal estudiante 1
+    mov cx, [di + 63]      ; Continuación decimal estudiante 2
+    
+    cmp ax, dx
+    jg mayor_5
+    jl menor_5
+    
+    cmp bx, cx
+    jg mayor_5
+    jl menor_5
     
     ; Son iguales
     clc                    ; CF = 0, no intercambiar
-    jmp fin_comparar
+    jmp fin_comparar_5
     
-mayor:
+mayor_5:
     stc                    ; CF = 1, intercambiar
-    jmp fin_comparar
+    jmp fin_comparar_5
     
-menor:
+menor_5:
     clc                    ; CF = 0, no intercambiar
 
-fin_comparar:
+fin_comparar_5:
     pop dx
+    pop bx
     pop ax
     ret
-comparar_estudiantes endp
+comparar_estudiantes_5_decimales endp
 
 BubbleDescendente:
     mov cl, contador
@@ -487,7 +495,7 @@ CICLO_INTERNO_DESC:
     add di, estudiante_size
     
     ; Comparar los dos estudiantes (orden inverso para descendente)
-    call comparar_estudiantes
+    call comparar_estudiantes_5_decimales
     jc NO_SWAP_DESC        ; Si CF=1, no intercambiar (para descendente)
     
     ; Intercambiar estudiantes
@@ -505,9 +513,9 @@ NO_SWAP_DESC:
     jnz CICLO_EXTERNO_DESC
     
 fin_sortDescen:
-    jmp mostrar_notas_ordenadas
+    jmp mostrar_notas_ordenadas_5_decimales
 
-mostrar_notas_ordenadas:
+mostrar_notas_ordenadas_5_decimales:
     mov dl, 13
     mov ah, 02h
     int 21h
@@ -515,11 +523,11 @@ mostrar_notas_ordenadas:
     int 21h
 
     mov cl, contador
-    jcxz fin_impresion
+    jcxz fin_impresion_5
 
     mov si, offset estudiantes
 
-imprimir_notas_loop:
+imprimir_notas_loop_5:
     ; Imprimir parte entera (offset 60)
     mov al, [si + 60]
     call print_decimal
@@ -529,9 +537,8 @@ imprimir_notas_loop:
     mov ah, 02h
     int 21h
     
-    ; Imprimir parte decimal (offset 61)
-    mov al, [si + 61]
-    call mostrar_decimal
+    ; Imprimir parte decimal (5 dígitos)
+    call mostrar_5_decimales
 
     ; Espacio entre notas
     mov dl, ' '
@@ -539,9 +546,9 @@ imprimir_notas_loop:
     int 21h
 
     add si, estudiante_size    ; Siguiente estudiante
-    loop imprimir_notas_loop
+    loop imprimir_notas_loop_5
 
-fin_impresion:
+fin_impresion_5:
     ; Salto de línea final
     mov dl, 13
     mov ah, 02h
@@ -559,7 +566,6 @@ fin_impresion:
 op5:
     mov ax,4c00h
     int 21h
-
 
 separar_datos_optimizado proc
     push ax 
@@ -631,7 +637,7 @@ no_saltar:
     ret
 separar_datos_optimizado endp
 
-procesar_nota_optimizado proc
+procesar_nota_5_decimales proc
     push ax 
     push bx 
     push cx 
@@ -651,49 +657,106 @@ procesar_nota_optimizado proc
     xor dx, dx              ; DX = 0 (parte entera), 1 (decimal)
     xor ax, ax              ; AX = valor acumulado
     
-convertir_loop:
+    ; Inicializar decimales a 0
+    mov word ptr [bx + 1], 0
+    mov word ptr [bx + 3], 0
+    
+    mov di, 0               ; Contador de decimales
+    
+convertir_loop_5:
     mov cl, [si]
     cmp cl, '.'             ; ¿es punto decimal?
-    je punto_decimal
+    je punto_decimal_5
     cmp cl, 13              ; ¿es enter?
-    je fin_conversion
+    je fin_conversion_5
     cmp cl, ' '             ; ¿es espacio?
-    je fin_conversion
+    je fin_conversion_5
     cmp cl, '$'             ; ¿es terminador?
-    je fin_conversion
+    je fin_conversion_5
     
     sub cl, '0'             ; convertir a número
     mov ch, 0
     
     cmp dx, 0
-    jne es_decimal
+    jne es_decimal_5
     
     ; Parte entera: acumular * 10 + dígito
     mov dx, 10
     mul dx
     add ax, cx
-    jmp siguiente_digito
+    jmp siguiente_digito_5
     
-es_decimal:
-    ; Para decimales, manejamos diferente
-    mov [bx + 1], cl        ; guardar decimal directamente
-    jmp siguiente_digito
+es_decimal_5:
+    ; Para decimales, procesar 5 dígitos
+    cmp di, 5
+    jae siguiente_digito_5  ; Si ya tenemos 5 decimales, ignorar el resto
     
-punto_decimal:
+    ; Multiplicar decimal actual por 10 y sumar nuevo dígito
+    push ax
+    mov ax, [bx + 1]        ; Cargar parte baja de decimales
+    mov dx, [bx + 3]        ; Cargar parte alta de decimales
+    
+    ; Multiplicar por 10 (DX:AX * 10)
+    mov cx, 10
+    mul cx                  ; Multiplicar parte baja
+    xchg ax, dx
+    mul cx                  ; Multiplicar parte alta
+    xchg ax, dx
+    
+    add ax, cx              ; Sumar nuevo dígito
+    adc dx, 0
+    
+    mov [bx + 1], ax        ; Guardar parte baja
+    mov [bx + 3], dx        ; Guardar parte alta
+    
+    pop ax
+    inc di
+    
+siguiente_digito_5:
+    inc si
+    jmp convertir_loop_5
+    
+punto_decimal_5:
     mov dx, 1               ; activar modo decimal
     mov [bx], al            ; guardar parte entera
     xor ax, ax              ; resetear acumulador
     
-siguiente_digito:
-    inc si
-    jmp convertir_loop
+    ; Ajustar decimales para 5 dígitos (multiplicar por 10^(5-di))
+    mov di, 0               ; Inicializar contador de decimales
+    jmp siguiente_digito_5
     
-fin_conversion:
+fin_conversion_5:
     cmp dx, 0
-    jne ya_guardado
+    jne ya_guardado_5
     mov [bx], al            ; guardar parte entera si no había decimal
     
-ya_guardado:
+ya_guardado_5:
+    ; Asegurar que tenemos exactamente 5 decimales
+    cmp di, 5
+    jae conversion_completa_5
+    
+    ; Completar con ceros si faltan decimales
+    mov cx, 5
+    sub cx, di
+completar_ceros_5:
+    push cx
+    mov ax, [bx + 1]        ; Cargar parte baja de decimales
+    mov dx, [bx + 3]        ; Cargar parte alta de decimales
+    
+    ; Multiplicar por 10
+    mov cx, 10
+    mul cx                  ; Multiplicar parte baja
+    xchg ax, dx
+    mul cx                  ; Multiplicar parte alta
+    xchg ax, dx
+    
+    mov [bx + 1], ax        ; Guardar parte baja
+    mov [bx + 3], dx        ; Guardar parte alta
+    
+    pop cx
+    loop completar_ceros_5
+    
+conversion_completa_5:
     pop di 
     pop si 
     pop dx 
@@ -701,9 +764,9 @@ ya_guardado:
     pop bx 
     pop ax
     ret
-procesar_nota_optimizado endp
+procesar_nota_5_decimales endp
 
-mostrar_estudiante_optimizado proc
+mostrar_estudiante_5_decimales proc
     push ax 
     push bx 
     push cx 
@@ -764,9 +827,8 @@ mostrar_estudiante_optimizado proc
     mov ah, 02h
     int 21h
     
-    ; Parte decimal
-    mov al, [bx + 61]
-    call mostrar_decimal
+    ; Parte decimal (5 dígitos)
+    call mostrar_5_decimales
     
     ; Nueva línea
     mov ah, 09h
@@ -780,7 +842,78 @@ mostrar_estudiante_optimizado proc
     pop bx 
     pop ax
     ret
-mostrar_estudiante_optimizado endp
+mostrar_estudiante_5_decimales endp
+
+mostrar_5_decimales proc
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Cargar los 5 decimales (almacenados como número de 0-99999)
+    mov ax, [bx + 61]      ; Parte baja
+    mov dx, [bx + 63]      ; Parte alta
+    
+    ; Mostrar como 5 dígitos con ceros a la izquierda
+    mov cx, 10000         ; Divisor para primer dígito
+    call mostrar_digito_decimal
+    
+    mov cx, 1000          ; Divisor para segundo dígito
+    call mostrar_digito_decimal
+    
+    mov cx, 100           ; Divisor para tercer dígito
+    call mostrar_digito_decimal
+    
+    mov cx, 10            ; Divisor para cuarto dígito
+    call mostrar_digito_decimal
+    
+    mov cx, 1             ; Divisor para quinto dígito
+    call mostrar_digito_decimal
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+mostrar_5_decimales endp
+
+mostrar_digito_decimal proc
+    push ax
+    push bx
+    push dx
+    
+    ; Dividir DX:AX por CX
+    mov bx, cx
+    xor cx, cx
+    
+divide_loop:
+    cmp dx, 0
+    jne divide_high
+    cmp ax, bx
+    jb divide_done
+    
+divide_high:
+    sub ax, bx
+    sbb dx, 0
+    inc cx
+    jmp divide_loop
+    
+divide_done:
+    ; Mostrar dígito
+    mov dl, cl
+    add dl, '0'
+    mov ah, 02h
+    int 21h
+    
+    ; Restaurar resto
+    mov ax, ax
+    mov dx, dx
+    
+    pop dx
+    pop bx
+    pop ax
+    ret
+mostrar_digito_decimal endp
 
 ; Procedimiento para mostrar número
 mostrar_numero proc
@@ -911,8 +1044,9 @@ fin_mostrar_numero:
     ret
 mostrar_numero endp
 
-; Procedimiento para calcular estadísticas
-calcular_estadisticas proc
+; Procedimiento para calcular estadísticas con 5 decimales
+; Procedimiento para calcular estadísticas con 5 decimales
+calcular_estadisticas_5_decimales proc
     push ax 
     push bx 
     push cx 
@@ -923,106 +1057,143 @@ calcular_estadisticas proc
     ; Initialize variables
     mov suma_entera, 0
     mov suma_decimal, 0
+    mov suma_decimal + 2, 0  ; Inicializar parte alta también
     mov aprobados, 0
     mov reprobados, 0
     mov maxima_entera, 0
     mov maxima_decimal, 0
+    mov maxima_decimal + 2, 0
     mov minima_entera, 100
     mov minima_decimal, 0
+    mov minima_decimal + 2, 0
     
     ; Set up pointer to estudiantes array
     mov si, offset estudiantes
     mov cl, contador
     mov ch, 0
-    jcxz fin_calculo           ; Salir si no hay estudiantes
+    jcxz fin_calculo_5           ; Salir si no hay estudiantes
     
-calcular_loop:
+calcular_loop_5:
     ; Obtener nota entera (offset 60)
     mov al, [si + 60]
     mov ah, 0
     add suma_entera, ax
     
-    ; Obtener nota decimal (offset 61)  
-    mov al, [si + 61]
-    mov ah, 0
-    add suma_decimal, ax
+    ; Obtener nota decimal (offset 61-64) - CORREGIDO
+    mov ax, [si + 61]      ; Parte baja
+    mov dx, [si + 63]      ; Parte alta
+    add word ptr suma_decimal, ax
+    adc word ptr suma_decimal + 2, dx
     
-    ; Check for carry-over from decimal part
-    cmp suma_decimal, 100
-    jb no_carry
-    sub suma_decimal, 100
+    ; Check for carry-over from decimal part (100000 = 0x186A0)
+    cmp word ptr suma_decimal + 2, 1      ; Comparar parte alta
+    jb no_carry_5
+    ja hacer_carry_5
+    cmp word ptr suma_decimal, 86A0h      ; Comparar parte baja
+    jb no_carry_5
+    
+hacer_carry_5:
+    sub word ptr suma_decimal, 86A0h
+    sbb word ptr suma_decimal + 2, 1
     inc suma_entera
+    jmp no_carry_5
     
-no_carry:
+no_carry_5:
     ; Check if student passed (nota >= 70)
     mov al, [si + 60]          ; Parte entera
     cmp al, 70
-    jb estudiante_reprobado
+    jb estudiante_reprobado_5
     
     ; If integer part is exactly 70, check decimal part
-    jne estudiante_aprobado
-    mov al, [si + 61]          ; Parte decimal
-    cmp al, 0
-    je estudiante_aprobado
+    jne estudiante_aprobado_5
+    mov ax, [si + 61]          ; Parte decimal
+    mov dx, [si + 63]
+    or ax, dx                  ; Combinar ambas partes
+    jnz estudiante_aprobado_5  ; Si no es cero, aprobado
 
-estudiante_aprobado:
+estudiante_aprobado_5:
     inc aprobados
-    jmp check_max_min
+    jmp check_max_min_5
     
-estudiante_reprobado:
+estudiante_reprobado_5:
     inc reprobados
     
-check_max_min:
+check_max_min_5:
     ; Check for maximum grade
     mov al, [si + 60]
     cmp al, maxima_entera
-    jb check_minima
-    ja new_maxima
-    mov al, [si + 61]
-    cmp al, maxima_decimal
-    jbe check_minima
+    jb check_minima_5
+    ja new_maxima_5
     
-new_maxima:
+    ; Si partes enteras son iguales, comparar decimales
+    mov ax, [si + 61]
+    mov dx, [si + 63]
+    cmp dx, word ptr maxima_decimal + 2  ; Comparar parte alta primero
+    ja new_maxima_5
+    jb check_minima_5
+    cmp ax, word ptr maxima_decimal      ; Luego parte baja
+    ja new_maxima_5
+    jbe check_minima_5
+    
+new_maxima_5:
     mov al, [si + 60]
     mov maxima_entera, al
-    mov al, [si + 61]
-    mov maxima_decimal, al
+    mov ax, [si + 61]
+    mov dx, [si + 63]
+    mov word ptr maxima_decimal, ax
+    mov word ptr maxima_decimal + 2, dx
+    jmp check_minima_5
     
-check_minima:
+check_minima_5:
     ; Check for minimum grade
     mov al, [si + 60]
     cmp al, minima_entera
-    ja next_student
-    jb new_minima
-    mov al, [si + 61]
-    cmp al, minima_decimal
-    jae next_student
+    ja next_student_5
+    jb new_minima_5
     
-new_minima:
+    ; Si partes enteras son iguales, comparar decimales
+    mov ax, [si + 61]
+    mov dx, [si + 63]
+    cmp dx, word ptr minima_decimal + 2  ; Comparar parte alta primero
+    jb new_minima_5
+    ja next_student_5
+    cmp ax, word ptr minima_decimal      ; Luego parte baja
+    jb new_minima_5
+    jae next_student_5
+    
+new_minima_5:
     mov al, [si + 60]
     mov minima_entera, al
-    mov al, [si + 61]
-    mov minima_decimal, al
+    mov ax, [si + 61]
+    mov dx, [si + 63]
+    mov word ptr minima_decimal, ax
+    mov word ptr minima_decimal + 2, dx
     
-next_student:
+next_student_5:
     add si, estudiante_size    ; Avanzar al siguiente estudiante
-    loop calcular_loop
+    loop calcular_loop_5
     
-    ; Calculate average
+    ; Calculate average - CORREGIDO para evitar overflow
     mov ax, suma_entera
     mov bl, contador
     div bl
     mov promedio_entera, al
     
-    mov ax, suma_decimal
+    ; Calcular promedio de decimales (simplificado)
+    mov ax, word ptr suma_decimal
+    mov dx, word ptr suma_decimal + 2
     mov bl, contador
-    div bl
-    mov promedio_decimal, al
+    mov bh, 0
+    
+    ; Dividir DX:AX por BX
+    div bx
+    mov word ptr promedio_decimal, ax
+    mov word ptr promedio_decimal + 2, dx
     
     ; Display results
-    call mostrar_estadisticas
+    call mostrar_estadisticas_5_decimales
     
-fin_calculo:                   ; ? ETIQUETA AÑADIDA
+fin_calculo_5:
     pop di
     pop si
     pop dx
@@ -1030,15 +1201,16 @@ fin_calculo:                   ; ? ETIQUETA AÑADIDA
     pop bx
     pop ax
     ret
-calcular_estadisticas endp
+calcular_estadisticas_5_decimales endp
 
-; Procedimiento para mostrar estadísticas
-mostrar_estadisticas proc
+; Procedimiento para mostrar estadísticas con 5 decimales
+mostrar_estadisticas_5_decimales proc
     push ax
     push dx
+    push bx
     
     ; Show sum
-    call mostrar_suma_corregida
+    call mostrar_suma_corregida_5
     
     ; Show average
     mov dx, offset msg_promedio
@@ -1050,8 +1222,10 @@ mostrar_estadisticas proc
     mov dl, '.'
     mov ah, 02h
     int 21h
-    mov al, promedio_decimal
-    call mostrar_decimal
+    
+    ; Mostrar 5 decimales del promedio
+    mov bx, offset promedio_decimal
+    call mostrar_5_decimales_stat
     
     ; Show maximum grade
     mov dx, offset msg_maxima
@@ -1063,8 +1237,10 @@ mostrar_estadisticas proc
     mov dl, '.'
     mov ah, 02h
     int 21h
-    mov al, maxima_decimal
-    call mostrar_decimal
+    
+    ; Mostrar 5 decimales de la máxima
+    mov bx, offset maxima_decimal
+    call mostrar_5_decimales_stat
     
     ; Show minimum grade
     mov dx, offset msg_minima
@@ -1076,8 +1252,10 @@ mostrar_estadisticas proc
     mov dl, '.'
     mov ah, 02h
     int 21h
-    mov al, minima_decimal
-    call mostrar_decimal
+    
+    ; Mostrar 5 decimales de la mínima
+    mov bx, offset minima_decimal
+    call mostrar_5_decimales_stat
     
     ; Show approved students count
     mov dx, offset msg_aprobados
@@ -1095,27 +1273,77 @@ mostrar_estadisticas proc
     mov al, reprobados
     call print_decimal
     
+    pop bx
     pop dx
     pop ax
     ret
-mostrar_estadisticas endp
+mostrar_estadisticas_5_decimales endp
 
-; Procedimiento para mostrar números decimales
-mostrar_decimal proc
+; Procedimiento especial para mostrar 5 decimales de estadísticas
+mostrar_5_decimales_stat proc
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Cargar los 5 decimales (almacenados como número de 0-99999)
+    mov ax, [bx]      ; Parte baja
+    mov dx, [bx + 2]  ; Parte alta
+    
+    ; Mostrar como 5 dígitos con ceros a la izquierda
+    mov cx, 10000         ; Divisor para primer dígito
+    call mostrar_digito_decimal_stat
+    
+    mov cx, 1000          ; Divisor para segundo dígito
+    call mostrar_digito_decimal_stat
+    
+    mov cx, 100           ; Divisor para tercer dígito
+    call mostrar_digito_decimal_stat
+    
+    mov cx, 10            ; Divisor para cuarto dígito
+    call mostrar_digito_decimal_stat
+    
+    mov cx, 1             ; Divisor para quinto dígito
+    call mostrar_digito_decimal_stat
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+mostrar_5_decimales_stat endp
+
+mostrar_digito_decimal_stat proc
     push ax
     push bx
     push dx
     
-    xor ah, ah
-    mov bl, 10
-    div bl
+    ; Dividir DX:AX por CX
+    xor bx, bx
+    mov bx, cx
     
-    add al, '0'
+    ; Para números de 32 bits, necesitamos una división más compleja
+    push cx
+    mov cx, 32
+    xor si, si
+    
+divide_loop_stat:
+    shl ax, 1
+    rcl dx, 1
+    rcl si, 1
+    
+    cmp si, bx
+    jb no_sub_stat
+    
+    sub si, bx
+    inc ax
+    
+no_sub_stat:
+    loop divide_loop_stat
+    pop cx
+    
+    ; Mostrar dígito (está en AL)
     mov dl, al
-    mov ah, 02h
-    int 21h
-    
-    mov dl, ah
     add dl, '0'
     mov ah, 02h
     int 21h
@@ -1124,10 +1352,10 @@ mostrar_decimal proc
     pop bx
     pop ax
     ret
-mostrar_decimal endp
+mostrar_digito_decimal_stat endp
 
-; Procedimiento para mostrar suma
-mostrar_suma_corregida proc
+; Procedimiento para mostrar suma con 5 decimales
+mostrar_suma_corregida_5 proc
     push ax
     push bx
     push cx
@@ -1144,15 +1372,16 @@ mostrar_suma_corregida proc
     mov ah, 02h
     int 21h
     
-    mov al, byte ptr suma_decimal
-    call mostrar_decimal
+    ; Mostrar 5 decimales de la suma
+    mov bx, offset suma_decimal
+    call mostrar_5_decimales
     
     pop dx
     pop cx
     pop bx
     pop ax
     ret
-mostrar_suma_corregida endp
+mostrar_suma_corregida_5 endp
 
 ; Procedimiento para imprimir número decimal
 print_decimal proc
@@ -1246,7 +1475,7 @@ pedir_indice_mejorado proc
 convertir_cadena:
     mov bl, [si]
     cmp bl, 13                   ; Fin por Enter
-    je fin_conversion
+    je fin_conversion1
     cmp bl, '0'
     jb fin_pedir_indice_error
     cmp bl, '9'
@@ -1258,7 +1487,7 @@ convertir_cadena:
     inc si
     loop convertir_cadena
     
-fin_conversion:
+fin_conversion1:
     jmp fin_pedir_indice
     
 presiono_esc:
@@ -1277,8 +1506,8 @@ fin_pedir_indice:
     ret
 pedir_indice_mejorado endp
 
-; Procedimiento para mostrar estudiante por índice
-mostrar_estudiante_por_indice proc
+; Procedimiento para mostrar estudiante por índice con 5 decimales
+mostrar_estudiante_por_indice_5_decimales proc
     push ax
     push bx
     push cx
@@ -1343,9 +1572,8 @@ mostrar_estudiante_por_indice proc
     mov ah, 02h
     int 21h
     
-    ; Parte decimal
-    mov al, [si + 61]
-    call mostrar_decimal
+    ; Parte decimal (5 dígitos)
+    call mostrar_5_decimales
     
     ; Nueva línea
     mov ah, 09h
@@ -1358,9 +1586,8 @@ mostrar_estudiante_por_indice proc
     pop bx
     pop ax
     ret
-mostrar_estudiante_por_indice endp
+mostrar_estudiante_por_indice_5_decimales endp
 
 end main
 
 main endp
-
