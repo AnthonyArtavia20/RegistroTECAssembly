@@ -321,34 +321,35 @@ BubbleAscendente:
     dec cl
     jz fin_sort
 
-CICLO_EXTERNO:
+CICLO_EXTERNO_ASC:
     mov si, offset estudiantes
     mov bl, cl
 
-CICLO_INTERNO:
+CICLO_INTERNO_ASC:
     push bx
     push si
     
-    ; Comparar notas del estudiante actual y siguiente
-    mov al, [si + 60]          ; Nota entera actual
-    mov dl, [si + estudiante_size + 60] ; Nota entera siguiente
+    ; DI apunta al siguiente estudiante
+    mov di, si
+    add di, estudiante_size
     
-    cmp al, dl
-    JBE NO_SWAP
+    ; Comparar los dos estudiantes
+    call comparar_estudiantes
+    jnc NO_SWAP_ASC        ; Si CF=0, no intercambiar
     
-    ; SWAP: Intercambiar estudiantes completos
+    ; Intercambiar estudiantes
     call intercambiar_estudiantes
     
-NO_SWAP:
+NO_SWAP_ASC:
     pop si
     pop bx
     
     add si, estudiante_size    ; Siguiente estudiante
     dec bl
-    jnz CICLO_INTERNO
+    jnz CICLO_INTERNO_ASC
 
     dec cl
-    jnz CICLO_EXTERNO
+    jnz CICLO_EXTERNO_ASC
 
 fin_sort:
     jmp mostrar_notas_ordenadas
@@ -360,10 +361,6 @@ intercambiar_estudiantes proc
     push dx 
     push si 
     push di
-    
-    ; DI apunta al siguiente estudiante
-    mov di, si
-    add di, estudiante_size
     
     ; Intercambiar los 62 bytes completos
     mov cx, estudiante_size
@@ -385,39 +382,75 @@ intercambio_loop:
     ret
 intercambiar_estudiantes endp
 
+comparar_estudiantes proc
+    push ax
+    push dx
+    
+    ; Comparar parte entera primero
+    mov al, [si + 60]      ; Nota entera estudiante 1
+    mov dl, [di + 60]      ; Nota entera estudiante 2
+    cmp al, dl
+    jg mayor
+    jl menor
+    
+    ; Si partes enteras son iguales, comparar decimales
+    mov al, [si + 61]      ; Nota decimal estudiante 1
+    mov dl, [di + 61]      ; Nota decimal estudiante 2
+    cmp al, dl
+    jg mayor
+    jl menor
+    
+    ; Son iguales
+    clc                    ; CF = 0, no intercambiar
+    jmp fin_comparar
+    
+mayor:
+    stc                    ; CF = 1, intercambiar
+    jmp fin_comparar
+    
+menor:
+    clc                    ; CF = 0, no intercambiar
+
+fin_comparar:
+    pop dx
+    pop ax
+    ret
+comparar_estudiantes endp
+
 BubbleDescendente:
     mov cl, contador
     dec cl
     jz fin_sortDescen
 
-CICLO_EXTERNODescen:
+CICLO_EXTERNO_DESC:
     mov si, offset estudiantes
     mov bl, cl
 
-CICLO_INTERNODescen:
+CICLO_INTERNO_DESC:
     push bx
     push si
     
-    ; Comparar notas del estudiante actual y siguiente
-    mov al, [si + 60]          ; Nota entera actual
-    mov dl, [si + estudiante_size + 60] ; Nota entera siguiente
+    ; DI apunta al siguiente estudiante
+    mov di, si
+    add di, estudiante_size
     
-    cmp al, dl
-    JAE NO_SWAPDescen          ; Cambiado de JBE a JAE para orden descendente
+    ; Comparar los dos estudiantes (orden inverso para descendente)
+    call comparar_estudiantes
+    jc NO_SWAP_DESC        ; Si CF=1, no intercambiar (para descendente)
     
-    ; SWAP: Intercambiar estudiantes completos
+    ; Intercambiar estudiantes
     call intercambiar_estudiantes
     
-NO_SWAPDescen:
+NO_SWAP_DESC:
     pop si
     pop bx
     
     add si, estudiante_size    ; Siguiente estudiante
     dec bl
-    jnz CICLO_INTERNODescen
+    jnz CICLO_INTERNO_DESC
 
     dec cl
-    jnz CICLO_EXTERNODescen
+    jnz CICLO_EXTERNO_DESC
     
 fin_sortDescen:
     jmp mostrar_notas_ordenadas
