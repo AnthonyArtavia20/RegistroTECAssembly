@@ -31,6 +31,13 @@
     msg_guardado db 13,10,'Guardado: $'
     msg_con_nota db ' con nota: $'
     
+    msg_indice_invalido db 13,10,'Error: Indice invalido. Debe ser entre 1 y $'
+    msg_indice_pedido db 13,10,'Ingrese el indice (1-'
+    msg_indice_cerrar db '): $'
+    msg_estudiante_indice db 13,10,10,'Estudiante en posicion $'
+    msg_dos_puntos db ': $'
+
+
     ; Buffer para entrada de datos
     buffer db 50
             db ?
@@ -261,7 +268,7 @@ wait_esc_op2:
     jmp wait_esc_op2
 
 op3: 
-    mov ax,0600h ;limpiar pantalla
+      mov ax,0600h ;limpiar pantalla
     mov bh, 1eh ;1 fondo azul, e color de letra amarilla
     mov cx,0000h
     mov dx,184Fh
@@ -277,9 +284,49 @@ op3:
     mov ah,09
     int 21h
     
-    mov ah,08 ;pausa y captura de datos
+    ; Verificar si hay estudiantes registrados
+    mov al, contador
+    cmp al, 0
+    je no_estudiantes_op3
+    
+    ; Pedir índice al usuario
+    call pedir_indice_mejorado
+    cmp ax, 0FFFFh        ; ¿Presionó ESC?
+    je Menu
+    
+    ; Validar índice (debe estar entre 1 y contador)
+    cmp ax, 1
+    jb indice_invalido_op3
+    cmp al, contador
+    ja indice_invalido_op3
+    
+    ; Mostrar estudiante
+    call mostrar_estudiante_por_indice
+    jmp esperar_tecla_op3
+    
+no_estudiantes_op3:
+    mov dx, offset msg_sin_datos
+    mov ah, 09h
     int 21h
-    cmp al,27 ;ASCII 27 = ESC
+    jmp esperar_tecla_op3
+    
+indice_invalido_op3:
+    mov dx, offset msg_indice_invalido
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar el rango válido
+    mov al, contador
+    call print_decimal
+    
+    mov dl, ')'
+    mov ah, 02h
+    int 21h
+    
+esperar_tecla_op3:
+    mov ah, 08h
+    int 21h
+    cmp al, 27
     je Menu
     jmp op3
 
@@ -1154,6 +1201,164 @@ done:
     pop ax
     ret
 print_decimal endp   
+
+; Procedimiento para pedir índice
+pedir_indice_mejorado proc
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Mostrar mensaje con rango válido
+    mov dx, offset msg_indice_pedido
+    mov ah, 09h
+    int 21h
+    
+    mov al, contador
+    call print_decimal
+    
+    mov dx, offset msg_indice_cerrar
+    mov ah, 09h
+    int 21h
+    
+    ; Leer entrada del usuario usando buffer
+    mov byte ptr buffer, 3        ; Máximo 2 dígitos + Enter
+    mov dx, offset buffer
+    mov ah, 0Ah
+    int 21h
+    
+    ; Verificar si se presionó ESC (primer carácter)
+    mov si, offset buffer + 2
+    mov al, [si]
+    cmp al, 27
+    je presiono_esc
+    
+    ; Convertir la cadena a número
+    xor ax, ax
+    xor cx, cx
+    mov cl, buffer + 1           ; Longitud de la entrada
+    jcxz fin_pedir_indice_error  ; Si no se ingresó nada
+    
+    mov di, 10                   ; Base decimal
+    mov si, offset buffer + 2    ; Inicio de la cadena
+    
+convertir_cadena:
+    mov bl, [si]
+    cmp bl, 13                   ; Fin por Enter
+    je fin_conversion
+    cmp bl, '0'
+    jb fin_pedir_indice_error
+    cmp bl, '9'
+    ja fin_pedir_indice_error
+    
+    sub bl, '0'                  ; Convertir a número
+    mul di                       ; ax = ax * 10
+    add ax, bx                   ; ax = ax + dígito
+    inc si
+    loop convertir_cadena
+    
+fin_conversion:
+    jmp fin_pedir_indice
+    
+presiono_esc:
+    mov ax, 0FFFFh
+    jmp fin_pedir_indice
+    
+fin_pedir_indice_error:
+    mov ax, 0                    ; Retornar 0 para indicar error
+    
+fin_pedir_indice:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    ret
+pedir_indice_mejorado endp
+
+; Procedimiento para mostrar estudiante por índice
+mostrar_estudiante_por_indice proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    ; Calcular offset del estudiante (ax ya contiene el índice)
+    mov bx, ax                  ; Guardar índice original
+    dec ax                      ; Ajustar a índice base 0
+    mov cl, estudiante_size
+    mul cl
+    mov si, offset estudiantes
+    add si, ax                  ; SI apunta al estudiante
+    
+    ; Mostrar encabezado
+    mov dx, offset msg_estudiante_indice
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar el índice original (guardado en bx)
+    mov al, bl
+    call print_decimal
+    
+    mov dx, offset msg_dos_puntos
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar nombre completo
+    mov dx, si
+    mov ah, 09h
+    int 21h
+    
+    mov dl, ' '
+    mov ah, 02h
+    int 21h
+    
+    mov dx, si
+    add dx, 20              ; Apellido1
+    mov ah, 09h
+    int 21h
+    
+    mov dl, ' '
+    mov ah, 02h
+    int 21h
+    
+    mov dx, si
+    add dx, 40              ; Apellido2
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar nota
+    mov dx, offset msg_con_nota
+    mov ah, 09h
+    int 21h
+    
+    ; Parte entera
+    mov al, [si + 60]
+    call print_decimal
+    
+    ; Punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Parte decimal
+    mov al, [si + 61]
+    call mostrar_decimal
+    
+    ; Nueva línea
+    mov ah, 09h
+    lea dx, nueva_linea
+    int 21h
+    
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+mostrar_estudiante_por_indice endp
 
 end main
 
