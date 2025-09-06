@@ -972,23 +972,23 @@ print_decimal_word proc
     int 21h
     jmp done_word
     
-convert_loop:
-    xor dx, dx
-    div bx
-    push dx
-    inc cx
-    test ax, ax
-    jnz convert_loop
+convert_loop: 
+    xor dx, dx     ; Limpiar DX para usarlo como registro de resto
+    div bx    ; Dividir AX entre BX (base 10), resultado en AX, resto en DX
+    push dx        ; Guardar el resto (dígito actual) en la pila
+    inc cx       ; Incrementar el contador de dígitos
+    test ax, ax      ; Verificar si AX es 0 (ya no hay más dígitos por procesar)
+    jnz convert_loop   ; Si no es 0, continuar el bucle para procesar el siguiente dígito
     
 print_loop:
-    pop dx
-    add dl, '0'
-    mov ah, 02h
-    int 21h
-    loop print_loop
+    pop dx ;acceder al dígito almacenado en la pila stacl
+    add dl, '0' ;convertir el número es ASCII
+    mov ah, 02h ;Función propia para imprimir caracteres
+    int 21h ;Se interrumpe el flujo para imprimir un caracter
+    loop print_loop ;repetir hasta que se haya procesado tod
     
 done_word:
-    pop dx
+    pop dx ;En este sector lo que se hace es restaurar cada valor original de cada registro, osea antes de regresar al procedimiento que lo llama
     pop cx
     pop bx
     pop ax
@@ -1004,7 +1004,7 @@ mostrar_numero proc
     mov al, contador
     inc al                 ; al = número actual (1-15)
     
-    ; Solución fuerza bruta - usar una tabla de búsqueda
+    ; Solución fuerza bruta - usar una tabla de búsqueda, se tuvo que hacer así porque no se encontró otra forma de hacerlo
     cmp al, 1
     je mostrar_1
     cmp al, 2
@@ -1036,7 +1036,7 @@ mostrar_numero proc
     cmp al, 15
     je mostrar_15
 
-mostrar_1:
+mostrar_1: ;se comienza a mostrar por dígito cada función.
     mov dl, '1'
     jmp mostrar_digito
 
@@ -1124,7 +1124,7 @@ fin_mostrar_numero:
     ret
 mostrar_numero endp
 
-; Procedimiento para calcular estadísticas
+; Procedimiento para calcular estadisticas operación correspondiente del menoi
 calcular_estadisticas proc
     push ax 
     push bx 
@@ -1202,7 +1202,7 @@ fin_calculo_sin_estudiantes:
     mov ah, 09h
     int 21h
     
-fin_calculo:
+fin_calculo: ;se recuperan los valores originales de cada registro, volviendo a recuperar el estado antes de ser llamados.
     pop di
     pop si
     pop dx
@@ -1245,12 +1245,12 @@ fin_redondeo:
     ret
 redondear_nota_a_entero endp
 
-mostrar_estadisticas_simplificado proc
+mostrar_estadisticas_simplificado proc ;se procedio a simplificar porque la gran cantidad de debug daba errores.
     push ax
     push dx
     
     ; Mostrar encabezado
-    mov dx, offset nueva_linea
+    mov dx, offset nueva_linea ;Imprime una nueva linea con el procedimiento dedicado
     mov ah, 09h
     int 21h
     
@@ -1258,14 +1258,14 @@ mostrar_estadisticas_simplificado proc
     mov dx, offset msg_suma
     mov ah, 09h
     int 21h
-    mov ax, suma_total
-    call print_decimal_word
+    mov ax, suma_total ;carga la suma total calculada al registro
+    call print_decimal_word ;Imprime el valor de la suma total
     mov dx, offset nueva_linea
     mov ah, 09h
     int 21h
     
-    ; Mostrar promedio
-    mov dx, offset msg_promedio
+    ; Mostrar promedio 
+    mov dx, offset msg_promedio ;se realiza la misma lógica comentada anteriormente solo que con los procedimientos dedicados a cada parte
     mov ah, 09h
     int 21h
     mov al, promedio
@@ -1325,25 +1325,25 @@ mostrar_estadisticas_simplificado endp
 
 ; Procedimiento para mostrar números decimales
 mostrar_decimal proc
-    push ax
-    push bx
+    push ax ;Se guardan los valores actuales de cada registro en la pila, anteriormente acá no se guardaban
+    push bx;los valores correctos, causando un salto incorrecto al momento de mostrar los decimales
     push dx
     
-    xor ah, ah
-    mov bl, 10
-    div bl
+    xor ah, ah ;Con xor limpiamos el registro AH 
+    mov bl, 10 ;Se carga 10 como divisor para los calculos
+    div bl ;dividimos AX entre 10, Resultado: AL = cociente, AH = residuo
     
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
+    add al, '0' ;Convertir el cociente, la parte alta, a su equivalente ASCII
+    mov dl, al ;Se guarda el caracter convertido al registro DL
+    mov ah, 02h ;se imprime con la funcion propia de DOS
+    int 21h ;interrumpimos para mostrar
     
-    mov dl, ah
-    add dl, '0'
-    mov ah, 02h
-    int 21h
+    mov dl, ah ;Se muev la parte baja, osea el residuo, al registro DL
+    add dl, '0' ;Se convvierte el residuo a ASCII
+    mov ah, 02h ;Se imprime con la funcion de DOS
+    int 21h ;Interrumpe para imrpimr
     
-    pop dx
+    pop dx ;Recuperamos los valores originales de los registros.
     pop bx
     pop ax
     ret
@@ -1351,14 +1351,14 @@ mostrar_decimal endp
 
 ; Procedimiento para imprimir número decimal
 print_decimal proc
-    push ax
+    push ax ;Guardamos el valor actual de los registros
     push dx
     push cx
     
-    cmp al, 100
+    cmp al, 100 ;Se compara el valor del registro, con 100 para simplemente printearlo o no
     jne not_hundred
 
-    mov dl, '1'
+    mov dl, '1' ;Si encontramos que es un 100, simplemente se printea "1","0","0"
     mov ah, 02h
     int 21h
     mov dl, '0'
@@ -1370,28 +1370,28 @@ print_decimal proc
     jmp done
 
 not_hundred:
-    xor ah, ah
-    mov bl, 10
-    div bl
+    xor ah, ah ;Limmpia el registro AH
+    mov bl, 10 ;Carga el divisor (10) en BL
+    div bl ;dividir AX entre 10. Resultado: AL = cociente, AH = residuo
     
-    mov cl, ah
+    mov cl, ah ;Se guarda el residuo (decenas) en CL
     
-    cmp al, 0
-    je print_unit
+    cmp al, 0 ;Verifica si el cociente es 0
+    je print_unit ;Si es 0, salta a imprimir las unidades
 
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
+    add al, '0' ; Convertimos el cociente(decenas) en ASCII
+    mov dl, al; una vez convertido se guarda en DL
+    mov ah, 02h ;Imprimimos
+    int 21h ;interrumpimos para imprimr
 
 print_unit:
-    mov dl, cl
-    add dl, '0'
-    mov ah, 02h
-    int 21h
+    mov dl, cl ;Mueve el residuo(unidades) al registro DL
+    add dl, '0' ;Convertir el residuo a su equivalente ASCII
+    mov ah, 02h ;Función DOS para imprimir
+    int 21h ;interumpe para imprimir
 
 done:
-    pop cx
+    pop cx ;Se restauran  todos los valores
     pop dx
     pop ax
     ret
@@ -1418,52 +1418,52 @@ pedir_indice_mejorado proc
     int 21h
     
     ; Leer entrada del usuario usando buffer
-    mov byte ptr buffer, 3        ; Máximo 2 dígitos + Enter
-    mov dx, offset buffer
-    mov ah, 0Ah
-    int 21h
+    mov byte ptr buffer, 3        ; tamaño máximo de entrada. Máximo 2 dígitos + Enter
+    mov dx, offset buffer ;Carga la dirección del buffer en DX
+    mov ah, 0Ah ;Función DOS para leer entradas de buffer
+    int 21h ;interumpe para capturar la entrada del usuario
     
     ; Verificar si se presionó ESC (primer carácter)
-    mov si, offset buffer + 2
-    mov al, [si]
-    cmp al, 27
-    je presiono_esc
+    mov si, offset buffer + 2 ;Apunta al primer caracter ingresado en el buffer
+    mov al, [si] ;Cargar el primer caracter en Al
+    cmp al, 27 ;Compara el codigo ASCII para ESC
+    je presiono_esc ;Si es ESC, salta a la etiqueta
     
     ; Convertir la cadena a número
-    xor ax, ax
-    xor cx, cx
+    xor ax, ax ;limpia el Acumulador AX para el numero convertido
+    xor cx, cx ;Lo mismo pero con CX, contador de longitud de la candena
     mov cl, buffer + 1           ; Longitud de la entrada
-    jcxz fin_pedir_indice_error  ; Si no se ingresó nada
+    jcxz fin_pedir_indice_error  ; Si no se ingresó nadam longitrud 0, salta a error
     
     mov di, 10                   ; Base decimal
-    mov si, offset buffer + 2    ; Inicio de la cadena
+    mov si, offset buffer + 2    ; apunta al inicio de la cadenaa en el bufer
     
 convertir_cadena:
-    mov bl, [si]
-    cmp bl, 13                   ; Fin por Enter
-    je fin_conversion1
+    mov bl, [si] ;carga el caracter actual en la cadena en BL
+    cmp bl, 13                   ; compara con la tecla enter
+    je fin_conversion1 ;diversas coparacioenes
     cmp bl, '0'
     jb fin_pedir_indice_error
     cmp bl, '9'
     ja fin_pedir_indice_error
     
-    sub bl, '0'                  ; Convertir a número
-    mul di                       ; ax = ax * 10
-    add ax, bx                   ; ax = ax + dígito
-    inc si
-    loop convertir_cadena
+    sub bl, '0'     ; Convertir a su valor numerico
+    mul di                ; ax = ax * 10, multiplica AX por la base (10)
+    add ax, bx       ; ax = ax + dígito, Suma el digito convertido al acumulador
+    inc si        ;Avanza al siguiente caracter a la cadena para procesarlo
+    loop convertir_cadena ;repite mientras CX(contador) no sea 0
     
 fin_conversion1:
-    jmp fin_pedir_indice
+    jmp fin_pedir_indice ;salta el final del procedimiento
     
 presiono_esc:
-    mov ax, 0FFFFh
-    jmp fin_pedir_indice
+    mov ax, 0FFFFh ;retornar valor especial para indicar el precionado de ESC
+    jmp fin_pedir_indice ;salta
     
 fin_pedir_indice_error:
-    mov ax, 0                    ; Retornar 0 para indicar error
+    mov ax, 0                    ; Retornar 0 para indicar error en la conversion
     
-fin_pedir_indice:
+fin_pedir_indice: ;Restaura el valor original de los registros al anterior antes de entrar a este proceso
     pop di
     pop si
     pop dx
@@ -1473,20 +1473,20 @@ fin_pedir_indice:
 pedir_indice_mejorado endp
 
 validar_nombre_completo proc
-    push ax
+    push ax ;carga los valores actuales en la pila para restaurarlos luego
     push bx
     push cx
     push dx
     push si
     
-    mov si, offset buffer + 2
+    mov si, offset buffer + 2 ;apunta al inicio de la entrada del buffer
     mov bl, [buffer + 1]  ; Longitud de la entrada
     mov bh, 0
-    cmp bl, 0
+    cmp bl, 0   ;verifica si la longitud es 0
     jz invalido_nombre  ; Si no hay caracteres, inválido
     
 validar_caracteres_nombre:
-    mov al, [si]
+    mov al, [si] ;carga el caracter actual
     
     ; DEBUG: Mostrar caracter leído
     push ax
@@ -1594,7 +1594,7 @@ invalido_nombre:
     
     stc                  ; Establecer flag de carry = error
 
-fin_validar_nombre:
+fin_validar_nombre: ;se retoman los valores de los registros.
     pop si
     pop dx
     pop cx
@@ -1618,18 +1618,18 @@ validar_nota proc
     jz invalido_nota    ; Si no hay caracteres, inválido
     
 validar_caracteres_nota:
-    mov al, [si]
+    mov al, [si] ;se carga el caracter actual desde elñ buffer en AL
     
     ; DEBUG: Mostrar caracter leído
-    push ax
+    push ax ;Guardar el valor ed AX y DX en la pila
     push dx
-    mov dx, offset msg_debug_char
-    mov ah, 09h
+    mov dx, offset msg_debug_char ;debug
+    mov ah, 09h ;función de DOS para imprimir
     int 21h
-    mov dl, al
-    mov ah, 02h
+    mov dl, al ;carga el caracter leido
+    mov ah, 02h  ;imprime
     int 21h
-    mov dx, offset msg_debug_ascii
+    mov dx, offset msg_debug_ascii ;Cargar el mensaje ASCII
     mov ah, 09h
     int 21h
     pop dx
@@ -1663,34 +1663,34 @@ verificar_punto:
     ja caracter_invalido_nota     ; Si hay más de uno, inválido
     
     ; DEBUG: Mostrar que es válido (punto)
-    push dx
-    mov dx, offset msg_debug_valid
-    mov ah, 09h
-    int 21h
-    pop dx
-    jmp siguiente_caracter_nota
+    push dx ; Guarda el valor de DX
+    mov dx, offset msg_debug_valid ;carga el mensaje
+    mov ah, 09h ;Interrumpe
+    int 21h ;imprime
+    pop dx;Restaura el valor original de DX
+    jmp siguiente_caracter_nota ;Salta a procesar el siguiente caracter
 
 caracter_invalido_nota:
     ; DEBUG: Mostrar que es inválido
-    push dx
-    mov dx, offset msg_debug_invalid
-    mov ah, 09h
+    push dx ;guardar el valor de DX en pila
+    mov dx, offset msg_debug_invalid ;debug
+    mov ah, 09h ;Funcion para imprimir
     int 21h
     pop dx
     jmp invalido_nota
 
 siguiente_caracter_nota:
-    inc si
-    dec bl
+    inc si ;Avanza al siguiente caracter en el buffer
+    dec bl ;decrementa el contador de caracteres restantes
     jnz validar_caracteres_nota
 
 valido_nota_final:
     ; DEBUG: Mostrar que llegó al final
-    push dx
-    mov dx, offset nueva_linea
-    mov ah, 09h
-    int 21h
-    mov dx, offset msg_debug_valid
+    push dx ;guardar el valor de DX en el buffer
+    mov dx, offset nueva_linea ;Cargar elk mensaje de nueva linea
+    mov ah, 09h ;  Funcion DOS para imprimir cadena
+    int 21h ;Interrumpe y muestra
+    mov dx, offset msg_debug_valid ;debug
     mov ah, 09h
     int 21h
     pop dx
@@ -1734,10 +1734,10 @@ convertir_nota_a_numero proc
     push dx
     push si
     
-    mov si, offset buffer + 2
-    xor ax, ax           ; AX = resultado
-    xor cx, cx           ; CX = contador de decimales
-    xor dx, dx           ; DX = flag de punto decimal (0=entera, 1=decimal)
+    mov si, offset buffer + 2 ;apunta al inicio de la entreada en el buffer
+    xor ax, ax           ; AX = resultado, inicializa AX en 0
+    xor cx, cx           ; CX = contador de decimales, inicializa CX en 0
+    xor dx, dx           ; DX = flag de punto decimal: 0 = entero, 1 = decimal), inicializa DX en 0
     mov bx, 10           ; Base 10
     
     ; DEBUG: Inicio de conversión
@@ -1792,11 +1792,11 @@ verificar_rango:
     cmp bx, 10000
     ja fuera_de_rango
     
-    clc
-    jmp fin_convertir
+    clc ; limpia el flag de carry para indicar que la conversion salio bien
+    jmp fin_convertir ;salta al fin del proceso
 
 fuera_de_rango:
-    stc
+    stc ;establece la flag de carry para indicar que la nota esta fuera de rango
 
 fin_convertir:
     pop si
@@ -1834,14 +1834,14 @@ mostrar_estudiante_por_indice proc
     int 21h
     
     ; Mostrar nombre completo
-    mov dx, si
-    mov ah, 09h
-    int 21h
-    mov dl, ' '
-    mov ah, 02h
-    int 21h
+    mov dx, si ;carga la direccion del nombre completo en DX
+    mov ah, 09h ;imprime DOS
+    int 21h ;interrumpe
+    mov dl, ' ' ;Carga un espacio en DL
+    mov ah, 02h ;iimprime
+    int 21h ;interrumpe
     
-    mov dx, si
+    mov dx, si ;lo mismo pero para primer apellido
     add dx, 20
     mov ah, 09h
     int 21h
@@ -1849,7 +1849,7 @@ mostrar_estudiante_por_indice proc
     mov ah, 02h
     int 21h
     
-    mov dx, si
+    mov dx, si  ;lo mismo pero para segundo apellido
     add dx, 40
     mov ah, 09h
     int 21h
@@ -1886,30 +1886,30 @@ mostrar_estudiante_por_indice proc
 mostrar_estudiante_por_indice endp
 
 print_decimal_byte proc
-    push ax
+    push ax ;guardamos el valor actual de cada registro para luego retomarlo al salir
     push bx
     push cx
     push dx
     
-    mov bl, al
-    mov al, bl
-    xor ah, ah
-    mov cl, 100
-    div cl
+    mov bl, al ;copia el valor de AL en BL
+    mov al, bl ;restaura el valor en AL desde BL
+    xor ah, ah ;limpia el registro AHY
+    mov cl, 100 ;Carga el divisor 100 en CL
+    div cl ;Divide entre 100. Cociente en AL, residuo en AH
     mov ch, ah  ; Guardar resto
     
-    cmp al, 0
-    je no_centenas
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
+    cmp al, 0 ;verifica si el cociente (centenas)es 0
+    je no_centenas ;salta si si
+    add al, '0' ;convierte el cociente a u caracter ASCII
+    mov dl, al ;mover el caracter ASCII en Dl
+    mov ah, 02h ;printea
+    int 21h ;interrumpe
     
 no_centenas:
     mov al, ch
     xor ah, ah
     mov cl, 10
-    div cl
+    div cl ;divide AX entre 10, cociente en AL, residuo en AH
     mov ch, ah  ; Guardar resto
     
     cmp al, 0
@@ -1922,21 +1922,21 @@ no_centenas:
     
 no_decenas:
     ; Si hubo centenas, mostrar 0
-    mov al, bl
-    cmp al, 100
+    mov al, bl ;Carga el valor original en AL
+    cmp al, 100 ;verifica si el valor es menor que 100
     jb mostrar_unidades
     mov dl, '0'
     mov ah, 02h
     int 21h
     
 mostrar_unidades:
-    mov al, ch
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
+    mov al, ch ;Carga el residuo(unidades) enAL
+    add al, '0' ;Convierte el residuo a su caracter ASCII
+    mov dl, al ;Mover el caracter ASCII a DL
+    mov ah, 02h ;printea
+    int 21h ;interrumpe
     
-    pop dx
+    pop dx ;se retornar todos los valores guardados en el stack
     pop cx
     pop bx
     pop ax
