@@ -37,6 +37,14 @@
     msg_estudiante_indice db 13,10,10,'Estudiante en posicion $'
     msg_dos_puntos db ': $'
 
+    ; Agregar estas variables en la sección .data
+    msg_error_nombre db 13,10,'Error: El nombre solo puede contener letras y espacios',13,10,'$'
+    msg_error_nota db 13,10,'Error: La nota solo puede contener números y un punto decimal',13,10,'$'
+    msg_debug_char db 13,10,'DEBUG: Caracter leido: $'
+    msg_debug_ascii db ' ASCII: $'
+    msg_debug_valid db ' ES VALIDO',13,10,'$'
+    msg_debug_invalid db ' ES INVALIDO',13,10,'$'
+
 
     ; Buffer para entrada de datos
     buffer db 50
@@ -129,7 +137,7 @@ Menu:
     jmp Menu
 
 op1:
-    ; Limpiar pantalla
+      ; Limpiar pantalla
     mov ax, 0600h
     mov bh, 0fh
     mov cx, 0000h
@@ -153,6 +161,7 @@ ingresar_dato_op1Loop:
     cmp al, 15
     jae completado_op1  ; Si ya hay 15, saltar a completado
 
+ingresar_nombre_valido:
     mov byte ptr buffer+1, 0
     mov byte ptr buffer+2, 0
 
@@ -186,9 +195,21 @@ ingresar_dato_op1Loop:
     cmp al, 27
     je Menu
 
+    ; Validar nombre completo (solo letras y espacios)
+    call validar_nombre_completo
+    jc nombre_invalido
+    
     ; Procesar nombre completo 
     call separar_datos_optimizado
+    jmp ingresar_nota_valida
 
+nombre_invalido:
+    mov dx, offset msg_error_nombre
+    mov ah, 09h
+    int 21h
+    jmp ingresar_nombre_valido
+
+ingresar_nota_valida:
     ; Pedir nota
     mov ah, 09h
     lea dx, msg_ingresar_nota
@@ -201,10 +222,14 @@ ingresar_dato_op1Loop:
     lea dx, buffer
     int 21h
 
-   ; Procesar nota con 5 decimales - CAMBIADO
+    ; Validar nota (solo números y un punto decimal)
+    call validar_nota
+    jc nota_invalida
+
+    ; Procesar nota con 5 decimales
     call procesar_nota_5_decimales
 
-    ; Mostrar estudiante guardado - CAMBIADO
+    ; Mostrar estudiante guardado
     call mostrar_estudiante_5_decimales
 
     ; Incrementar contador
@@ -217,6 +242,13 @@ ingresar_dato_op1Loop:
     ; Loop principal
     dec bx
     jnz ingresar_dato_op1Loop
+    jmp completado_op1
+
+nota_invalida:
+    mov dx, offset msg_error_nota
+    mov ah, 09h
+    int 21h
+    jmp ingresar_nota_valida
 
 completado_op1:
     mov ah, 09h
@@ -1440,6 +1472,341 @@ fin_pedir_indice:
     ret
 pedir_indice_mejorado endp
 
+validar_nombre_completo proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    mov si, offset buffer + 2
+    mov bl, [buffer + 1]  ; Longitud de la entrada
+    mov bh, 0
+    cmp bl, 0
+    jz invalido_nombre  ; Si no hay caracteres, inválido
+    
+validar_caracteres_nombre:
+    mov al, [si]
+    
+    ; DEBUG: Mostrar caracter leído
+    push ax
+    push dx
+    mov dx, offset msg_debug_char
+    mov ah, 09h
+    int 21h
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    mov dx, offset msg_debug_ascii
+    mov ah, 09h
+    int 21h
+    pop dx
+    pop ax
+    
+    push ax
+    call print_decimal_byte ; Mostrar valor ASCII
+    pop ax
+    
+    cmp al, 13           ; Fin de línea
+    je valido_nombre
+    cmp al, ' '          ; Espacio permitido
+    je caracter_valido
+    cmp al, 'A'
+    jb caracter_invalido   ; Menor que 'A'
+    cmp al, 'Z'
+    jbe caracter_valido  ; Entre 'A'-'Z'
+    cmp al, 'a'
+    jb caracter_invalido   ; Entre 'Z' y 'a'
+    cmp al, 'z'
+    jbe caracter_valido  ; Entre 'a'-'z'
+    ; Caracteres especiales del español
+    cmp al, 164          ; ñ minúscula
+    je caracter_valido
+    cmp al, 165          ; Ñ mayúscula
+    je caracter_valido
+    cmp al, 160          ; á
+    je caracter_valido
+    cmp al, 130          ; é
+    je caracter_valido
+    cmp al, 161          ; í
+    je caracter_valido
+    cmp al, 162          ; ó
+    je caracter_valido
+    cmp al, 163          ; ú
+    je caracter_valido
+    cmp al, 181          ; Á
+    je caracter_valido
+    cmp al, 144          ; É
+    je caracter_valido
+    cmp al, 214          ; Í
+    je caracter_valido
+    cmp al, 224          ; Ó
+    je caracter_valido
+    cmp al, 233          ; Ú
+    je caracter_valido
+    
+caracter_invalido:
+    ; DEBUG: Mostrar que es inválido
+    push dx
+    mov dx, offset msg_debug_invalid
+    mov ah, 09h
+    int 21h
+    pop dx
+    jmp invalido_nombre
+
+caracter_valido:
+    ; DEBUG: Mostrar que es válido
+    push dx
+    mov dx, offset msg_debug_valid
+    mov ah, 09h
+    int 21h
+    pop dx
+    
+siguiente_caracter_nombre:
+    inc si
+    dec bl
+    jnz validar_caracteres_nombre
+
+valido_nombre:
+    ; DEBUG: Mostrar que todo es válido
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_debug_valid
+    mov ah, 09h
+    int 21h
+    pop dx
+    
+    clc                  ; Limpiar flag de carry = válido
+    jmp fin_validar_nombre
+
+invalido_nombre:
+    ; DEBUG: Mostrar que es inválido
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_debug_invalid
+    mov ah, 09h
+    int 21h
+    pop dx
+    
+    stc                  ; Establecer flag de carry = error
+
+fin_validar_nombre:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+validar_nombre_completo endp
+
+validar_nota proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    mov si, offset buffer + 2
+    mov bl, [buffer + 1]  ; Longitud de la entrada
+    mov bh, 0
+    mov ch, 0             ; Contador de puntos decimales
+    cmp bl, 0
+    jz invalido_nota    ; Si no hay caracteres, inválido
+    
+validar_caracteres_nota:
+    mov al, [si]
+    
+    ; DEBUG: Mostrar caracter leído
+    push ax
+    push dx
+    mov dx, offset msg_debug_char
+    mov ah, 09h
+    int 21h
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    mov dx, offset msg_debug_ascii
+    mov ah, 09h
+    int 21h
+    pop dx
+    pop ax
+    
+    push ax
+    call print_decimal_byte ; Mostrar valor ASCII
+    pop ax
+    
+    cmp al, 13           ; Fin de línea
+    je valido_nota_final
+    cmp al, '.'          ; Punto decimal
+    je verificar_punto
+    cmp al, '0'
+    jb caracter_invalido_nota     ; Menor que '0'
+    cmp al, '9'
+    ja caracter_invalido_nota     ; Mayor que '9'
+    
+caracter_valido_nota:
+    ; DEBUG: Mostrar que es válido
+    push dx
+    mov dx, offset msg_debug_valid
+    mov ah, 09h
+    int 21h
+    pop dx
+    jmp siguiente_caracter_nota
+
+verificar_punto:
+    inc ch               ; Incrementar contador de puntos
+    cmp ch, 1            ; Solo debe haber un punto
+    ja caracter_invalido_nota     ; Si hay más de uno, inválido
+    
+    ; DEBUG: Mostrar que es válido (punto)
+    push dx
+    mov dx, offset msg_debug_valid
+    mov ah, 09h
+    int 21h
+    pop dx
+    jmp siguiente_caracter_nota
+
+caracter_invalido_nota:
+    ; DEBUG: Mostrar que es inválido
+    push dx
+    mov dx, offset msg_debug_invalid
+    mov ah, 09h
+    int 21h
+    pop dx
+    jmp invalido_nota
+
+siguiente_caracter_nota:
+    inc si
+    dec bl
+    jnz validar_caracteres_nota
+
+valido_nota_final:
+    ; DEBUG: Mostrar que llegó al final
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_debug_valid
+    mov ah, 09h
+    int 21h
+    pop dx
+    
+    ; Validar rango numérico (0-100)
+    call convertir_nota_a_numero
+    jc invalido_nota_rango
+    
+    clc                  ; Limpiar flag de carry = válido
+    jmp fin_validar_nota
+
+invalido_nota_rango:
+    ; DEBUG: Mostrar que está fuera de rango
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_debug_invalid
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_error_nota
+    int 21h
+    pop dx
+    
+invalido_nota:
+    stc                  ; Establecer flag de carry = error
+
+fin_validar_nota:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+validar_nota endp
+
+convertir_nota_a_numero proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    mov si, offset buffer + 2
+    xor ax, ax           ; AX = resultado
+    xor cx, cx           ; CX = contador de decimales
+    xor dx, dx           ; DX = flag de punto decimal (0=entera, 1=decimal)
+    mov bx, 10           ; Base 10
+    
+    ; DEBUG: Inicio de conversión
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_debug_char
+    int 21h
+    mov dx, offset buffer + 2
+    int 21h
+    pop dx
+    
+convertir_digito:
+    mov al, [si]
+    cmp al, 13           ; Fin de línea
+    je verificar_rango
+    cmp al, '.'          ; Punto decimal
+    je punto_encontrado
+    sub al, '0'          ; Convertir a número
+    mov ah, 0
+    
+    ; Multiplicar y sumar
+    xchg ax, bx
+    mul dx               ; Multiplicar por 10
+    xchg ax, bx
+    add bx, ax           ; Sumar dígito actual
+    
+    jmp siguiente_digito_conv
+
+punto_encontrado:
+    mov dx, 1            ; Activar flag de decimales
+    mov cx, 0            ; Iniciar contador de decimales
+
+siguiente_digito_conv:
+    inc si
+    jmp convertir_digito
+
+verificar_rango:
+    ; DEBUG: Mostrar valor convertido
+    push dx
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_suma
+    int 21h
+    mov ax, bx
+    call print_decimal_word
+    pop dx
+    
+    ; Verificar que la nota esté entre 0 y 10000 (equivalente a 100.00)
+    cmp bx, 10000
+    ja fuera_de_rango
+    
+    clc
+    jmp fin_convertir
+
+fuera_de_rango:
+    stc
+
+fin_convertir:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+convertir_nota_a_numero endp
+
 ; Procedimiento para mostrar estudiante por índice
 mostrar_estudiante_por_indice proc
     push ax
@@ -1517,6 +1884,64 @@ mostrar_estudiante_por_indice proc
     pop ax
     ret
 mostrar_estudiante_por_indice endp
+
+print_decimal_byte proc
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    mov bl, al
+    mov al, bl
+    xor ah, ah
+    mov cl, 100
+    div cl
+    mov ch, ah  ; Guardar resto
+    
+    cmp al, 0
+    je no_centenas
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+no_centenas:
+    mov al, ch
+    xor ah, ah
+    mov cl, 10
+    div cl
+    mov ch, ah  ; Guardar resto
+    
+    cmp al, 0
+    je no_decenas
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    jmp mostrar_unidades
+    
+no_decenas:
+    ; Si hubo centenas, mostrar 0
+    mov al, bl
+    cmp al, 100
+    jb mostrar_unidades
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    
+mostrar_unidades:
+    mov al, ch
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+print_decimal_byte endp
 
 end main
 
