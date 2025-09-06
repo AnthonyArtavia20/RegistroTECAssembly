@@ -58,13 +58,13 @@
     ; Variables para estadísticas
    ; Variables para estadísticas - ACTUALIZADO para 5 decimales
    
-    suma_total dw 0         ; Parte entera * 100 + decimales (2 dígitos)
-    promedio dw 0           ; Promedio en formato similar
-    maxima dw 0             ; Máxima nota
-    minima dw 10000         ; Mínima nota (100.00 * 100)
+    suma_total dw 0         ; Suma total de notas enteras
+    promedio db 0           ; Promedio (entero)
+    maxima db 0             ; Máxima nota (entero)
+    minima db 100           ; Mínima nota (entero)
     aprobados db 0
     reprobados db 0 
-    
+
     ; Para estadísticas
     msg_sin_datos db 13,10,'No hay datos de estudiantes. Presione cualquier tecla para continuar.$'
     msg_promedio db 13,10,'Promedio: $'
@@ -73,6 +73,7 @@
     msg_minima db 13,10,'Nota minima: $'
     msg_aprobados db 13,10,'Estudiantes aprobados (>=70): $'
     msg_reprobados db 13,10,'Estudiantes reprobados (<70): $'
+    msg_presione_tecla db 13,10,10,'Presione cualquier tecla para continuar...$'
 
     ; Para opción 2 - estadísticas
     estadisticas db 'Estadisticas generales del conjunto de estudiantes:',13,10,13,10,
@@ -1105,25 +1106,26 @@ calcular_estadisticas proc
     mov aprobados, 0
     mov reprobados, 0
     mov maxima, 0
-    mov minima, 10000
+    mov minima, 100
     
     ; Verificar si hay estudiantes
     mov cl, contador
     mov ch, 0
-    jcxz fin_calculo
+    jcxz fin_calculo_sin_estudiantes  ; Cambiamos esto para saltar a un nuevo punto
     
     mov si, offset estudiantes
     
 calcular_loop:
-    ; Convertir nota a formato de punto fijo (entera * 100 + decimales)
-    call convertir_nota_a_punto_fijo
-    ; AX ahora contiene la nota en formato: entera * 100 + decimales(2)
+    ; Convertir la nota a entero redondeado (85.50000 ? 86, 85.49999 ? 85)
+    call redondear_nota_a_entero
+    ; AL = nota redondeada (0-100)
     
     ; Sumar al total
+    mov ah, 0
     add suma_total, ax
     
-    ; Verificar si está aprobado (>= 70.00)
-    cmp ax, 7000
+    ; Verificar si está aprobado (>= 70)
+    cmp al, 70
     jb estudiante_reprobado
     inc aprobados
     jmp check_max_min
@@ -1133,29 +1135,40 @@ estudiante_reprobado:
     
 check_max_min:
     ; Verificar máxima
-    cmp ax, maxima
+    cmp al, maxima
     jbe check_minima
-    mov maxima, ax
+    mov maxima, al
     
 check_minima:
     ; Verificar mínima
-    cmp ax, minima
+    cmp al, minima
     jae next_student
-    mov minima, ax
+    mov minima, al
     
 next_student:
     add si, estudiante_size
     loop calcular_loop
     
-    ; Calcular promedio
+    ; Calcular promedio (suma_total / contador)
+    mov al, contador
+    cmp al, 0
+    je fin_calculo_sin_estudiantes  ; Evitar división por cero
+    
     mov ax, suma_total
     mov bl, contador
     mov bh, 0
-    div bx
-    mov promedio, ax
+    div bl
+    mov promedio, al
     
     ; Mostrar resultados
     call mostrar_estadisticas_simplificado
+    jmp fin_calculo
+    
+fin_calculo_sin_estudiantes:
+    ; Mostrar mensaje de que no hay estudiantes
+    mov dx, offset msg_sin_datos
+    mov ah, 09h
+    int 21h
     
 fin_calculo:
     pop di
@@ -1167,80 +1180,90 @@ fin_calculo:
     ret
 calcular_estadisticas endp
 
-convertir_nota_a_punto_fijo proc
-    ; Convierte nota de estudiante a formato: entera * 100 + decimales(2)
+redondear_nota_a_entero proc
+    ; Convierte nota de estudiante a entero redondeado
     ; Entrada: SI apunta al estudiante
-    ; Salida: AX = nota en punto fijo
+    ; Salida: AL = nota redondeada (0-100)
     
     push bx
     push cx
-    push dx
     
-    ; Obtener parte entera (word)
-    mov ax, [si + 60]
+    ; 1. Obtener parte entera
+    mov al, byte ptr [si + 60]  ; Parte entera (byte)
+    cmp al, 100
+    jbe entera_valida
+    mov al, 100                 ; Limitar a 100 si es mayor
     
-    ; Multiplicar por 100 para los decimales
-    mov bx, 100
-    mul bx
-    mov bx, ax  ; Guardar resultado temporal
+entera_valida:
+    ; 2. Verificar decimal para redondeo
+    ; Si el primer decimal es >= 5, redondear hacia arriba
+    mov bl, [si + 62]          ; Primer decimal
+    cmp bl, 5
+    jb fin_redondeo
     
-    ; Obtener los primeros 2 decimales (redondeando el tercero)
-    mov al, [si + 62]  ; Primer decimal
-    mov ah, 0
-    mov cl, 10
-    mul cl             ; * 10
-    mov cl, [si + 63]  ; Segundo decimal
-    add al, cl
-    adc ah, 0
+    ; Redondear hacia arriba
+    inc al
+    cmp al, 100
+    jbe fin_redondeo
+    mov al, 100                ; Limitar a 100
     
-    ; Redondear basado en el tercer decimal
-    mov cl, [si + 64]  ; Tercer decimal
-    cmp cl, 5
-    jb sin_redondeo
-    inc ax             ; Redondear hacia arriba
-    
-sin_redondeo:
-    ; Combinar con parte entera
-    add bx, ax
-    mov ax, bx
-    
-    pop dx
+fin_redondeo:
     pop cx
     pop bx
     ret
-convertir_nota_a_punto_fijo endp
+redondear_nota_a_entero endp
 
 mostrar_estadisticas_simplificado proc
     push ax
     push dx
     
-    ; Mostrar suma
+    ; Mostrar encabezado
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    
+    ; Mostrar suma total
     mov dx, offset msg_suma
     mov ah, 09h
     int 21h
     mov ax, suma_total
-    call mostrar_punto_fijo
+    call print_decimal_word
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
     
     ; Mostrar promedio
     mov dx, offset msg_promedio
     mov ah, 09h
     int 21h
-    mov ax, promedio
-    call mostrar_punto_fijo
+    mov al, promedio
+    mov ah, 0
+    call print_decimal_word
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
     
     ; Mostrar máxima
     mov dx, offset msg_maxima
     mov ah, 09h
     int 21h
-    mov ax, maxima
-    call mostrar_punto_fijo
+    mov al, maxima
+    mov ah, 0
+    call print_decimal_word
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
     
     ; Mostrar mínima
     mov dx, offset msg_minima
     mov ah, 09h
     int 21h
-    mov ax, minima
-    call mostrar_punto_fijo
+    mov al, minima
+    mov ah, 0
+    call print_decimal_word
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
     
     ; Mostrar aprobados/reprobados
     mov dx, offset msg_aprobados
@@ -1255,50 +1278,17 @@ mostrar_estadisticas_simplificado proc
     mov al, reprobados
     call print_decimal
     
+    ; Mensaje para continuar
+    mov dx, offset nueva_linea
+    mov ah, 09h
+    int 21h
+    mov dx, offset msg_presione_tecla
+    int 21h
+    
     pop dx
     pop ax
     ret
 mostrar_estadisticas_simplificado endp
-
-mostrar_punto_fijo proc
-    ; Muestra número en formato punto fijo (AX = entera * 100 + decimales)
-    push ax
-    push bx
-    push dx
-    
-    ; Separar parte entera y decimal
-    mov bx, 100
-    xor dx, dx
-    div bx
-    ; AX = parte entera, DX = decimales (0-99)
-    
-    ; Mostrar parte entera
-    call print_decimal_word
-    
-    ; Mostrar punto decimal
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    
-    ; Mostrar 2 decimales (si es necesario agregar leading zero)
-    mov ax, dx
-    cmp ax, 10
-    jae mostrar_decimales_normales
-    
-    ; Mostrar leading zero
-    mov dl, '0'
-    mov ah, 02h
-    int 21h
-    mov ax, dx
-    
-mostrar_decimales_normales:
-    call print_decimal_word
-    
-    pop dx
-    pop bx
-    pop ax
-    ret
-mostrar_punto_fijo endp
 
 
 ; Procedimiento para mostrar números decimales
