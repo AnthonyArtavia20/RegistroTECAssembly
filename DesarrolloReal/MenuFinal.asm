@@ -27,7 +27,7 @@
     msg_contador db 13,10,13,10,'Estudiante $'
     msg_total db ' /15: $'
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
-    msg_error db 13,10, 'Error: Nota debe estar entre 0 y 100',13,10,'$'
+    msg_error db 13,10, 'Error: La nota debe estar entre 0 y 100',13,10,'$'
     msg_guardado db 13,10,'Guardado: $'
     msg_con_nota db ' con nota: $'
     
@@ -37,7 +37,7 @@
     msg_estudiante_indice db 13,10,10,'Estudiante en posicion $'
     msg_dos_puntos db ': $'
 
-    ; Agregar estas variables en la sección .data
+    ;Mensajes de depuración y verificación para la entrada de datos
     msg_error_nombre db 13,10,'Error: El nombre solo puede contener letras y espacios',13,10,'$'
     msg_error_nota db 13,10,'Error: La nota solo puede contener números y un punto decimal',13,10,'$'
     msg_debug_char db 13,10,'DEBUG: Caracter leido: $'
@@ -62,8 +62,7 @@
     ; Para conversión de números
     temp_num db 0
     temp_buffer db 6 dup('$')
-    
-    ; Variables para estadísticas
+
    ; Variables para estadísticas - ACTUALIZADO para 5 decimales
    
     suma_total dw 0         ; Suma total de notas enteras
@@ -73,7 +72,7 @@
     aprobados db 0
     reprobados db 0 
 
-    ; Para estadísticas
+    ; Para estadísticas y todo el debug para que el usuario sepa lo calculado
     msg_sin_datos db 13,10,'No hay datos de estudiantes. Presione cualquier tecla para continuar.$'
     msg_promedio db 13,10,'Promedio: $'
     msg_suma db 13,10,'Suma total: $'
