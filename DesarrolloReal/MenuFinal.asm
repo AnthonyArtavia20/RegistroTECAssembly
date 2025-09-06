@@ -29,9 +29,13 @@
     msg_completado db 13,10,10, 'Se han guardado 15 estudiantes.$'
     msg_error db 13,10, 'Error: La nota debe estar entre 0 y 100',13,10,'$'
     msg_guardado db 13,10,'Guardado: $'
-    msg_con_nota db ' con nota: $'
+    msg_con_nota db ' con nota: $' 
     
-    msg_indice_invalido db 13,10,'Error: Indice invalido. Debe ser entre 1 y $'
+    
+    ; Mensajes para errores
+    msg_indice_invalido db 13,10,'Error: Indice invalido. Debe ser entre 1 y $'     
+    
+    ; Mensaje de busqueda por indice
     msg_indice_pedido db 13,10,'Ingrese el indice (1-'
     msg_indice_cerrar db '): $'
     msg_estudiante_indice db 13,10,10,'Estudiante en posicion $'
@@ -66,9 +70,9 @@
    ; Variables para estadísticas - ACTUALIZADO para 5 decimales
    
     suma_total dw 0         ; Suma total de notas enteras
-    promedio db 0           ; Promedio (entero)
-    maxima db 0             ; Máxima nota (entero)
-    minima db 100           ; Mínima nota (entero)
+    promedio db 0           ; Promedio
+    maxima db 0             ; Máxima nota 
+    minima db 100           ; Mínima nota 
     aprobados db 0
     reprobados db 0 
 
@@ -98,31 +102,36 @@
 
 .code
 main proc
+    ; Inicializar segmentos de datos
     mov ax, @data 
     mov ds, ax
     mov es, ax
 
 Menu:
-    ; Limpiar pantalla y mostrar menú
+    ; Limpiar pantalla
     mov ax, 0600h
     mov bh, 0fh
     mov cx, 0000h
     mov dx, 184Fh
     int 10h
 
+    ; Posicionar cursor en (0,0)
     mov ah, 02h
     mov bh, 00
     mov dh, 00
     mov dl, 00
     int 10h
 
+    ; Mostrar menu
     mov dx, offset mostrarMenu
     mov ah, 09
     int 21h
 
+    ; Leer tecla
     mov ah, 08
     int 21h
 
+    ; Verificar opcion seleccionada
     cmp al, '1'
     je op1
     cmp al, '2'
@@ -133,43 +142,49 @@ Menu:
     je op4
     cmp al, '5'
     je op5
-    jmp Menu
+    jmp Menu  ; Volver al menu si no es valido
 
 op1:
-      ; Limpiar pantalla
+    ; Limpiar pantalla
     mov ax, 0600h
     mov bh, 0fh
     mov cx, 0000h
     mov dx, 184Fh
     int 10h
     
+    ; Posicionar cursor
     mov ah, 02h
     mov bh, 00
     mov dh, 00
     mov dl, 00
     int 10h
     
+    ; Mostrar nombre del programa
     mov dx, offset miNombre
     mov ah, 09
     int 21h
 
+    ; Inicializar contador (15 estudiantes maximo)
     mov bx, 15
+
 ingresar_dato_op1Loop:
-    ; Verificar si ya se han procesado 15 estudiantes
+    ; Verificar si ya hay 15 estudiantes
     mov al, contador
     cmp al, 15
-    jae completado_op1  ; Si ya hay 15, saltar a completado
+    jae completado_op1  ; Saltar si ya hay 15
 
 ingresar_nombre_valido:
+    ; Limpiar buffer
     mov byte ptr buffer+1, 0
     mov byte ptr buffer+2, 0
 
+    ; Limpiar area de entrada
     mov cx, 50
     lea di, buffer+2
     mov al, '$'
     rep stosb
 
-    ; Mostrar contador
+    ; Mostrar numero de estudiante actual
     mov ah, 09h
     lea dx, msg_contador
     int 21h
@@ -180,33 +195,35 @@ ingresar_nombre_valido:
     lea dx, msg_total
     int 21h
 
-    ; Pedir nombre completo (nombre + apellidos)
+    ; Pedir nombre completo
     mov ah, 09h
     lea dx, msg_ingresar_nombre_completo
     int 21h
 
+    ; Leer entrada del usuario
     mov ah, 0Ah
     lea dx, buffer
     int 21h
 
-    ; Verificar si se presionó ESC
+    ; Verificar si se presiono ESC para volver al menú
     mov al, [buffer+2]
     cmp al, 27
     je Menu
 
-    ; Validar nombre completo (solo letras y espacios)
+    ; Validar que el nombre solo tenga letras y espacios
     call validar_nombre_completo
     jc nombre_invalido
     
-    ; Procesar nombre completo 
+    ; Separar nombre en partes
     call separar_datos_optimizado
     jmp ingresar_nota_valida
 
 nombre_invalido:
+    ; Mostrar mensaje de error
     mov dx, offset msg_error_nombre
     mov ah, 09h
     int 21h
-    jmp ingresar_nombre_valido
+    jmp ingresar_nombre_valido  ; Volver a pedir nombre
 
 ingresar_nota_valida:
     ; Pedir nota
@@ -214,100 +231,113 @@ ingresar_nota_valida:
     lea dx, msg_ingresar_nota
     int 21h
 
+    ; Limpiar buffer
     mov byte ptr buffer+1, 0
     mov byte ptr buffer+2, 0
 
+    ; Leer nota
     mov ah, 0Ah
     lea dx, buffer
     int 21h
 
-    ; Validar nota (solo números y un punto decimal)
+    ; Validar que la nota sea numérica
     call validar_nota
     jc nota_invalida
 
     ; Procesar nota con 5 decimales
     call procesar_nota_5_decimales
 
-    ; Mostrar estudiante guardado
+    ; Mostrar datos del estudiante
     call mostrar_estudiante_5_decimales
 
-    ; Incrementar contador
+    ; Incrementar contador de estudiantes
     inc contador
 
+    ; Nueva linea
     mov ah, 09h
     lea dx, nueva_linea
     int 21h
 
-    ; Loop principal
+    ; Continuar con siguiente estudiante
     dec bx
     jnz ingresar_dato_op1Loop
     jmp completado_op1
 
 nota_invalida:
+    ; Mostrar error de nota
     mov dx, offset msg_error_nota
     mov ah, 09h
     int 21h
-    jmp ingresar_nota_valida
+    jmp ingresar_nota_valida  ; Volver a pedir nota
 
 completado_op1:
+    ; Mostrar mensaje de completado
     mov ah, 09h
     lea dx, msg_completado
     int 21h
 
-    jmp Menu
+    jmp Menu  ; Volver al menu principal 
 
 op2:
-    mov ax,0600h ;limpiar pantalla
-    mov bh, 1eh ;1 fondo azul, e color de letra amarilla
+    ; Limpiar pantalla con color azul fondo, amarillo letras
+    mov ax,0600h 
+    mov bh, 1eh 
     mov cx,0000h
     mov dx,184Fh
     int 10h
     
+    ; Posicionar cursor en esquina superior izquierda
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
     
+    ; Mostrar titulo de estadisticas
     mov dx, offset estadisticas
     mov ah,09
     int 21h
     
-    ; Check if there are any students
+    ; Verificar si hay estudiantes registrados
     mov al, contador
     cmp al, 0
     je no_data_op2
     
-    ; Calculate statistics
+    ; Calcular estadisticas (promedio, maximo, minimo)
     call calcular_estadisticas
     
     jmp wait_esc_op2
     
 no_data_op2:
+    ; Mostrar mensaje si no hay datos
     mov dx, offset msg_sin_datos
     mov ah, 09h
     int 21h
     
 wait_esc_op2:
-    mov ah,08 ;pausa y captura de datos
+    ; Esperar tecla ESC para volver al menu
+    mov ah,08 
     int 21h
-    cmp al,27 ;ASCII 27 = ESC
+    cmp al,27 ; Tecla ESC
     je Menu
     jmp wait_esc_op2
 
 op3: 
-      mov ax,0600h ;limpiar pantalla
-    mov bh, 1eh ;1 fondo azul, e color de letra amarilla
+    ; Limpiar pantalla con color azul fondo, amarillo letras
+    mov ax,0600h 
+    mov bh, 1eh 
     mov cx,0000h
     mov dx,184Fh
     int 10h
     
+    ; Posicionar cursor en esquina superior izquierda
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
     
+    ; Mostrar titulo de busqueda
     mov dx, offset buscar
     mov ah,09
     int 21h
@@ -317,105 +347,116 @@ op3:
     cmp al, 0
     je no_estudiantes_op3
     
-    ; Pedir índice al usuario
+    ; Pedir numero de indice al usuario
     call pedir_indice_mejorado
-    cmp ax, 0FFFFh        ; ¿Presionó ESC?
+    cmp ax, 0FFFFh        ; Si presiono ESC
     je Menu
     
-    ; Validar índice (debe estar entre 1 y contador)
+    ; Validar que el indice sea mayor o igual a 1
     cmp ax, 1
     jb indice_invalido_op3
+    
+    ; Validar que el indice sea menor o igual al contador
     cmp al, contador
     ja indice_invalido_op3
     
-    ; Mostrar estudiante
+    ; Mostrar datos del estudiante seleccionado
     call mostrar_estudiante_por_indice
     jmp esperar_tecla_op3
     
 no_estudiantes_op3:
+    ; Mostrar mensaje si no hay estudiantes
     mov dx, offset msg_sin_datos
     mov ah, 09h
     int 21h
     jmp esperar_tecla_op3
     
 indice_invalido_op3:
+    ; Mostrar mensaje de indice invalido
     mov dx, offset msg_indice_invalido
     mov ah, 09h
     int 21h
     
-    ; Mostrar el rango válido
+    ; Mostrar el numero maximo valido (contador)
     mov al, contador
     call print_decimal
     
+    ; Mostrar parentesis de cierre
     mov dl, ')'
     mov ah, 02h
     int 21h
     
 esperar_tecla_op3:
+    ; Esperar tecla para continuar
     mov ah, 08h
     int 21h
-    cmp al, 27
+    cmp al, 27 ; Tecla ESC
     je Menu
-    jmp op3
+    jmp op3 ; Volver a op3
 
 op4:
+    ; Configurar modo texto
     mov ah,0
-    mov al,3h ;Modo texto
+    mov al,3h 
     int 10h
 
+    ; Limpiar pantalla con color
     mov ax,0600h
     mov bh, 1eh
     mov cx,0000h
     mov dx,184Fh
     int 10h
     
+    ; Posicionar cursor en (0,0)
     mov ah,02h
     mov bh,00
     mov dh,00
     mov dl,00
     int 10h
     
+    ; Mostrar menu de ordenamiento
     mov dx, offset Ordenar
     mov ah,09
     int 21h
 
-    ; Verificar si contador == 0
+    ; Verificar si hay estudiantes
     mov al, contador
     cmp al, 0
     je Menu
 
-    ; Determinar orden
+    ; Esperar seleccion de orden
 elegir_orden:
     mov ah, 08h
     int 21h
-    cmp al, 27
+    cmp al, 27    ; Tecla ESC
     je Menu  
-    cmp al, '1'
+    cmp al, '1'   ; Orden ascendente
     je BubbleAscendente
-    cmp al, '2'
+    cmp al, '2'   ; Orden descendente
     je BubbleDescendente
-    jmp elegir_orden
+    jmp elegir_orden  ; Esperar opcion valida
 
 BubbleAscendente:
+    ; Inicializar contador de ciclos
     mov cl, contador
     dec cl
-    jz fin_sort
+    jz fin_sort  ; Si solo hay 1 estudiante
 
 CICLO_EXTERNO_ASC:
-    mov si, offset estudiantes
-    mov bl, cl
+    mov si, offset estudiantes  ; Primer estudiante
+    mov bl, cl  ; Contador interno
 
 CICLO_INTERNO_ASC:
     push bx
     push si
     
-    ; DI apunta al siguiente estudiante
+    ; Preparar siguiente estudiante para comparar
     mov di, si
     add di, estudiante_size
     
-    ; Comparar los dos estudiantes
+    ; Comparar dos estudiantes
     call comparar_estudiantes
-    jnc NO_SWAP_ASC        ; Si CF=0, no intercambiar
+    jnc NO_SWAP_ASC  ; Si no necesita intercambio
     
     ; Intercambiar estudiantes
     call intercambiar_estudiantes
@@ -424,16 +465,20 @@ NO_SWAP_ASC:
     pop si
     pop bx
     
-    add si, estudiante_size    ; Siguiente estudiante
+    ; Mover al siguiente estudiante
+    add si, estudiante_size
     dec bl
     jnz CICLO_INTERNO_ASC
 
+    ; Continuar ciclo externo
     dec cl
     jnz CICLO_EXTERNO_ASC
 
 fin_sort:
+    ; Mostrar lista ordenada
     jmp mostrar_notas_ordenadas
 
+; Procedimiento para intercambiar dos estudiantes en memoria
 intercambiar_estudiantes proc
     push ax 
     push bx 
@@ -442,16 +487,16 @@ intercambiar_estudiantes proc
     push si 
     push di
     
-    ; Intercambiar los 62 bytes completos
+    ; Intercambiar todos los bytes del estudiante (62 bytes)
     mov cx, estudiante_size
 intercambio_loop:
-    mov al, [si]
-    mov dl, [di]
-    mov [si], dl
-    mov [di], al
-    inc si
-    inc di
-    loop intercambio_loop
+    mov al, [si]    ; Leer byte del primer estudiante
+    mov dl, [di]    ; Leer byte del segundo estudiante
+    mov [si], dl    ; Escribir segundo en primero
+    mov [di], al    ; Escribir primero en segundo
+    inc si          ; Siguiente byte primer estudiante
+    inc di          ; Siguiente byte segundo estudiante
+    loop intercambio_loop  ; Repetir para todos los bytes
     
     pop di 
     pop si 
@@ -462,6 +507,7 @@ intercambio_loop:
     ret
 intercambiar_estudiantes endp
 
+; Procedimiento para comparar dos estudiantes por su nota
 comparar_estudiantes proc
     push ax
     push bx
@@ -470,35 +516,35 @@ comparar_estudiantes proc
     push si
     push di
     
-    ; Comparar parte entera primero
-    mov ax, [si + 60]      ; Nota entera estudiante 1 (word)
-    mov dx, [di + 60]      ; Nota entera estudiante 2 (word)
+    ; Comparar parte entera de la nota (word en offset 60)
+    mov ax, [si + 60]      ; Nota entera estudiante 1
+    mov dx, [di + 60]      ; Nota entera estudiante 2
     cmp ax, dx
-    jg mayor
-    jl menor
+    jg mayor    ; Si estudiante1 > estudiante2
+    jl menor    ; Si estudiante1 < estudiante2
     
-    ; Si partes enteras son iguales, comparar decimales
-    mov cx, 5
-    mov bx, 0
+    ; Si partes enteras iguales, comparar decimales (5 bytes)
+    mov cx, 5   ; 5 decimales a comparar
+    mov bx, 0   ; Indice para decimales
 comparar_decimales:
     mov al, [si + 62 + bx] ; Decimal estudiante 1
     mov dl, [di + 62 + bx] ; Decimal estudiante 2
     cmp al, dl
-    jg mayor
-    jl menor
-    inc bx
+    jg mayor    ; Si decimal1 > decimal2
+    jl menor    ; Si decimal1 < decimal2
+    inc bx      ; Siguiente decimal
     loop comparar_decimales
     
-    ; Son iguales
-    clc
+    ; Las notas son exactamente iguales
+    clc         ; Clear carry flag (no intercambiar)
     jmp fin_comparar
     
 mayor:
-    stc
+    stc         ; Set carry flag (necesita intercambiar)
     jmp fin_comparar
     
 menor:
-    clc
+    clc         ; Clear carry flag (no intercambiar)
 
 fin_comparar:
     pop di
@@ -511,70 +557,77 @@ fin_comparar:
 comparar_estudiantes endp
 
 BubbleDescendente:
+    ; Inicializar contador para orden descendente
     mov cl, contador
     dec cl
-    jz fin_sortDescen
+    jz fin_sortDescen  ; Si solo hay 1 estudiante
 
 CICLO_EXTERNO_DESC:
-    mov si, offset estudiantes
-    mov bl, cl
+    mov si, offset estudiantes  ; Primer estudiante
+    mov bl, cl  ; Contador interno
 
 CICLO_INTERNO_DESC:
     push bx
     push si
     
-    ; DI apunta al siguiente estudiante
+    ; Preparar siguiente estudiante para comparar
     mov di, si
     add di, estudiante_size
     
-    ; Comparar los dos estudiantes (orden inverso para descendente)
+    ; Comparar estudiantes (orden inverso para descendente)
     call comparar_estudiantes
-    jc NO_SWAP_DESC        ; Si CF=1, no intercambiar (para descendente)
+    jc NO_SWAP_DESC  ; Si CF=1, no intercambiar
     
-    ; Intercambiar estudiantes
+    ; Intercambiar estudiantes si es necesario
     call intercambiar_estudiantes
     
 NO_SWAP_DESC:
     pop si
     pop bx
     
-    add si, estudiante_size    ; Siguiente estudiante
+    ; Mover al siguiente estudiante
+    add si, estudiante_size
     dec bl
     jnz CICLO_INTERNO_DESC
 
+    ; Continuar ciclo externo
     dec cl
     jnz CICLO_EXTERNO_DESC
     
 fin_sortDescen:
+    ; Mostrar notas ordenadas
     jmp mostrar_notas_ordenadas
 
 mostrar_notas_ordenadas:
+    ; Nueva linea
     mov dl, 13
     mov ah, 02h
     int 21h
     mov dl, 10
     int 21h
 
+    ; Verificar si hay estudiantes
     mov cl, contador
-    jcxz fin_impresion
+    jcxz fin_impresion  ; Saltar si contador = 0
 
+    ; Iniciar en primer estudiante
     mov si, offset estudiantes
 
 imprimir_notas_loop:
-    ; Parte entera
+    ; Imprimir parte entera de la nota
     mov ax, [si + 60]
     call print_decimal_word
     
-    ; Punto decimal
+    ; Imprimir punto decimal
     mov dl, '.'
     mov ah, 02h
     int 21h
     
-    ; 5 decimales
+    ; Imprimir 5 decimales de la nota
     lea si, [si + 62]
     call mostrar_5_decimales
     
-    ; Restaurar SI y avanzar
+    ; Restaurar posicion y avanzar al siguiente estudiante
     sub si, 62
     add si, estudiante_size
 
@@ -583,22 +636,26 @@ imprimir_notas_loop:
     mov ah, 02h
     int 21h
 
+    ; Repetir para todos los estudiantes
     loop imprimir_notas_loop
 
 fin_impresion:
+    ; Doble nueva linea al final
     mov dl, 13
     mov ah, 02h
     int 21h
     mov dl, 10
     int 21h
 
+    ; Esperar tecla
     mov ah, 08h
     int 21h
-    cmp al, 27
+    cmp al, 27  ; Tecla ESC
     je Menu
-    jmp Menu
+    jmp Menu    ; Volver al menu
 
 op5:
+    ; Terminar programa y volver al DOS
     mov ax,4c00h
     int 21h
 
@@ -694,13 +751,13 @@ procesar_nota_optimizado proc
     
 convertir_loop:
     mov cl, [si]
-    cmp cl, '.'             ; ¿es punto decimal?
+    cmp cl, '.'             ; es punto decimal?
     je punto_decimal
-    cmp cl, 13              ; ¿es enter?
+    cmp cl, 13              ; es enter?
     je fin_conversion
-    cmp cl, ' '             ; ¿es espacio?
+    cmp cl, ' '             ; es espacio?
     je fin_conversion
-    cmp cl, '$'             ; ¿es terminador?
+    cmp cl, '$'             ; es terminador?
     je fin_conversion
     
     sub cl, '0'             ; convertir a número
@@ -767,35 +824,35 @@ procesar_nota_5_decimales proc
     
 convertir_loop_5dec:
     mov cl, [si]
-    cmp cl, '.'             ; ¿es punto decimal?
+    cmp cl, '.'             ; es punto decimal?
     je punto_decimal_5dec
-    cmp cl, 13              ; ¿es enter?
+    cmp cl, 13              ; es enter?
     je fin_conversion_5dec
-    cmp cl, ' '             ; ¿es espacio?
+    cmp cl, ' '             ; es espacio?
     je fin_conversion_5dec
-    cmp cl, '$'             ; ¿es terminador?
+    cmp cl, '$'             ; es terminador?
     je fin_conversion_5dec
     
-    ; Validar que sea dígito
+    ; Validar que sea digito
     cmp cl, '0'
     jb error_digito
     cmp cl, '9'
     ja error_digito
     
-    sub cl, '0'             ; convertir a número
+    sub cl, '0'             ; convertir a numero
     mov ch, 0
     
     cmp dx, 0
     jne es_decimal_5dec
     
-    ; Parte entera: acumular * 10 + dígito
+    ; Parte entera: acumular * 10 + digito
     mov dx, 10
     mul dx
     add ax, cx
     jmp siguiente_digito_5dec
     
 es_decimal_5dec:
-    ; Almacenar decimales (máximo 5)
+    ; Almacenar decimales (maximo 5)
     cmp di, 5
     jae saltar_decimal_exceso
     
@@ -853,17 +910,17 @@ mostrar_5_decimales proc
     push si
     
     ; SI debe apuntar al primer decimal
-    mov cx, 5
-    mov bx, 0
+    mov cx, 5        ; Mostrar 5 decimales
+    mov bx, 0        ; Inicializar indice
     
 mostrar_decimal_loop:
-    mov al, [si + bx]
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    inc bx
-    loop mostrar_decimal_loop
+    mov al, [si + bx]  ; Leer valor decimal (0-9)
+    add al, '0'        ; Convertir a caracter ASCII
+    mov dl, al         ; Preparar para imprimir
+    mov ah, 02h        ; Funcion imprimir caracter
+    int 21h            ; Llamar a DOS
+    inc bx             ; Siguiente decimal
+    loop mostrar_decimal_loop  ; Repetir 5 veces
     
     pop si
     pop dx
