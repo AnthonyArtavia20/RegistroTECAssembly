@@ -44,39 +44,35 @@
             db 50 dup('$')
 
     ; Arrays para almacenar datos
-    estudiante_size equ 62  ; 20(nom) + 20(ape1) + 20(ape2) + 1(nota_ent) + 1(nota_dec)
-    estudiantes db 15 * estudiante_size dup('$') 
+    estudiante_size equ 67  ; 20(nom) + 20(ape1) + 20(ape2) + 1(nota_ent) + 1(nota_dec)
+    estudiantes db 15 * estudiante_size dup('$')  
     
     ; Variables de control
     contador db 0
     nueva_linea db 13,10,'$'
     
     ; Para conversión de números
-    temp_num dw 0
+    temp_num db 0
     temp_buffer db 6 dup('$')
-        
+    
+    ; Variables para estadísticas
+   ; Variables para estadísticas - ACTUALIZADO para 5 decimales
+   
+    suma_total dw 0         ; Parte entera * 100 + decimales (2 dígitos)
+    promedio dw 0           ; Promedio en formato similar
+    maxima dw 0             ; Máxima nota
+    minima dw 10000         ; Mínima nota (100.00 * 100)
+    aprobados db 0
+    reprobados db 0 
+    
     ; Para estadísticas
     msg_sin_datos db 13,10,'No hay datos de estudiantes. Presione cualquier tecla para continuar.$'
     msg_promedio db 13,10,'Promedio: $'
     msg_suma db 13,10,'Suma total: $'
     msg_maxima db 13,10,'Nota maxima: $'
     msg_minima db 13,10,'Nota minima: $'
-    
-    ; Variables para estadísticas
-    suma_entera dw 0
-    suma_decimal dw 0
-    promedio_entera db 0
-    promedio_decimal db 0
-    maxima_entera db 0
-    maxima_decimal db 0
-    minima_entera db 100
-    minima_decimal db 0   
-    
-    ; Para estadísticas de aprobados/reprobados
     msg_aprobados db 13,10,'Estudiantes aprobados (>=70): $'
     msg_reprobados db 13,10,'Estudiantes reprobados (<70): $'
-    aprobados db 0
-    reprobados db 0
 
     ; Para opción 2 - estadísticas
     estadisticas db 'Estadisticas generales del conjunto de estudiantes:',13,10,13,10,
@@ -204,11 +200,11 @@ ingresar_dato_op1Loop:
     lea dx, buffer
     int 21h
 
-    ; Procesar nota con estructura optimizada
-    call procesar_nota_optimizado
+   ; Procesar nota con 5 decimales - CAMBIADO
+    call procesar_nota_5_decimales
 
-    ; Mostrar estudiante guardado
-    call mostrar_estudiante_optimizado
+    ; Mostrar estudiante guardado - CAMBIADO
+    call mostrar_estudiante_5_decimales
 
     ; Incrementar contador
     inc contador
@@ -436,35 +432,48 @@ intercambiar_estudiantes endp
 
 comparar_estudiantes proc
     push ax
+    push bx
+    push cx
     push dx
+    push si
+    push di
     
     ; Comparar parte entera primero
-    mov al, [si + 60]      ; Nota entera estudiante 1
-    mov dl, [di + 60]      ; Nota entera estudiante 2
-    cmp al, dl
+    mov ax, [si + 60]      ; Nota entera estudiante 1 (word)
+    mov dx, [di + 60]      ; Nota entera estudiante 2 (word)
+    cmp ax, dx
     jg mayor
     jl menor
     
     ; Si partes enteras son iguales, comparar decimales
-    mov al, [si + 61]      ; Nota decimal estudiante 1
-    mov dl, [di + 61]      ; Nota decimal estudiante 2
+    mov cx, 5
+    mov bx, 0
+comparar_decimales:
+    mov al, [si + 62 + bx] ; Decimal estudiante 1
+    mov dl, [di + 62 + bx] ; Decimal estudiante 2
     cmp al, dl
     jg mayor
     jl menor
+    inc bx
+    loop comparar_decimales
     
     ; Son iguales
-    clc                    ; CF = 0, no intercambiar
+    clc
     jmp fin_comparar
     
 mayor:
-    stc                    ; CF = 1, intercambiar
+    stc
     jmp fin_comparar
     
 menor:
-    clc                    ; CF = 0, no intercambiar
+    clc
 
 fin_comparar:
+    pop di
+    pop si
     pop dx
+    pop cx
+    pop bx
     pop ax
     ret
 comparar_estudiantes endp
@@ -520,39 +529,40 @@ mostrar_notas_ordenadas:
     mov si, offset estudiantes
 
 imprimir_notas_loop:
-    ; Imprimir parte entera (offset 60)
-    mov al, [si + 60]
-    call print_decimal
+    ; Parte entera
+    mov ax, [si + 60]
+    call print_decimal_word
     
-    ; Imprimir punto decimal
+    ; Punto decimal
     mov dl, '.'
     mov ah, 02h
     int 21h
     
-    ; Imprimir parte decimal (offset 61)
-    mov al, [si + 61]
-    call mostrar_decimal
+    ; 5 decimales
+    lea si, [si + 62]
+    call mostrar_5_decimales
+    
+    ; Restaurar SI y avanzar
+    sub si, 62
+    add si, estudiante_size
 
     ; Espacio entre notas
     mov dl, ' '
     mov ah, 02h
     int 21h
 
-    add si, estudiante_size    ; Siguiente estudiante
     loop imprimir_notas_loop
 
 fin_impresion:
-    ; Salto de línea final
     mov dl, 13
     mov ah, 02h
     int 21h
     mov dl, 10
     int 21h
 
-    ; Esperar tecla
-    mov ah,08h
+    mov ah, 08h
     int 21h
-    cmp al,27
+    cmp al, 27
     je Menu
     jmp Menu
 
@@ -560,22 +570,21 @@ op5:
     mov ax,4c00h
     int 21h
 
-
-separar_datos_optimizado proc
+    separar_datos_optimizado proc
     push ax 
     push bx 
     push cx 
     push si 
     push di
     
-    ; Calcular offset base UNA sola vez
+    ; Calcular offset base
     mov bx, offset estudiantes
     mov al, contador
     mov cl, estudiante_size
     mul cl
-    add bx, ax              ; BX = inicio del registro actual
+    add bx, ax
     
-    lea si, buffer + 2      ; SI apunta a los datos de entrada
+    lea si, buffer + 2
     
     ; Limpiar el registro actual
     mov di, bx
@@ -606,24 +615,24 @@ separar_datos_optimizado proc
 
 copiar_campo:
     push cx
-    mov cx, 19              ; máximo 19 caracteres por campo
+    mov cx, 19
 copiar_loop:
     mov al, [si]
-    cmp al, ' '             ; fin por espacio
+    cmp al, ' '
     je fin_campo
-    cmp al, 13              ; fin por enter
+    cmp al, 13
     je fin_campo
-    cmp al, '$'             ; fin por terminador
+    cmp al, '$'
     je fin_campo
     
-    mov [di], al            ; COPIAR carácter
+    mov [di], al
     inc si
     inc di
     loop copiar_loop
     
 fin_campo:
-    mov byte ptr [di], '$'  ; terminar cadena
-    cmp byte ptr [si], ' '  ; si hay espacio, saltarlo
+    mov byte ptr [di], '$'
+    cmp byte ptr [si], ' '
     jne no_saltar
     inc si
 no_saltar:
@@ -703,7 +712,136 @@ ya_guardado:
     ret
 procesar_nota_optimizado endp
 
-mostrar_estudiante_optimizado proc
+procesar_nota_5_decimales proc
+    push ax 
+    push bx 
+    push cx 
+    push dx 
+    push si 
+    push di
+    
+    ; Calcular offset al campo de nota
+    mov bx, offset estudiantes
+    mov al, contador
+    mov cl, estudiante_size
+    mul cl
+    add bx, ax
+    add bx, 60              ; BX apunta a nota_entera (offset 60)
+    
+    lea si, buffer + 2
+    xor dx, dx              ; DX = 0 (parte entera), 1 (decimal)
+    xor ax, ax              ; AX = valor acumulado
+    mov di, 0               ; Contador de decimales
+    
+convertir_loop_5dec:
+    mov cl, [si]
+    cmp cl, '.'             ; ¿es punto decimal?
+    je punto_decimal_5dec
+    cmp cl, 13              ; ¿es enter?
+    je fin_conversion_5dec
+    cmp cl, ' '             ; ¿es espacio?
+    je fin_conversion_5dec
+    cmp cl, '$'             ; ¿es terminador?
+    je fin_conversion_5dec
+    
+    ; Validar que sea dígito
+    cmp cl, '0'
+    jb error_digito
+    cmp cl, '9'
+    ja error_digito
+    
+    sub cl, '0'             ; convertir a número
+    mov ch, 0
+    
+    cmp dx, 0
+    jne es_decimal_5dec
+    
+    ; Parte entera: acumular * 10 + dígito
+    mov dx, 10
+    mul dx
+    add ax, cx
+    jmp siguiente_digito_5dec
+    
+es_decimal_5dec:
+    ; Almacenar decimales (máximo 5)
+    cmp di, 5
+    jae saltar_decimal_exceso
+    
+    mov [bx + 2 + di], cl   ; guardar decimal (offset 62-66)
+    inc di
+    
+saltar_decimal_exceso:
+    jmp siguiente_digito_5dec
+    
+punto_decimal_5dec:
+    mov dx, 1               ; activar modo decimal
+    mov [bx], ax            ; guardar parte entera (word)
+    xor ax, ax              ; resetear acumulador
+    
+siguiente_digito_5dec:
+    inc si
+    jmp convertir_loop_5dec
+    
+error_digito:
+    ; Carácter inválido, saltarlo
+    inc si
+    jmp convertir_loop_5dec
+    
+fin_conversion_5dec:
+    cmp dx, 0
+    jne ya_guardado_5dec
+    mov [bx], ax            ; guardar parte entera si no había decimal
+    
+ya_guardado_5dec:
+    ; Rellenar decimales restantes con 0 si es necesario
+    cmp di, 5
+    jae fin_proceso_5dec
+    mov cx, 5
+    sub cx, di
+rellenar_ceros:
+    mov byte ptr [bx + 2 + di], 0
+    inc di
+    loop rellenar_ceros
+    
+fin_proceso_5dec:
+    pop di 
+    pop si 
+    pop dx 
+    pop cx 
+    pop bx 
+    pop ax
+    ret
+procesar_nota_5_decimales endp
+
+mostrar_5_decimales proc
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    
+    ; SI debe apuntar al primer decimal
+    mov cx, 5
+    mov bx, 0
+    
+mostrar_decimal_loop:
+    mov al, [si + bx]
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    inc bx
+    loop mostrar_decimal_loop
+    
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+mostrar_5_decimales endp
+
+mostrar_estudiante_5_decimales proc
     push ax 
     push bx 
     push cx 
@@ -750,23 +888,23 @@ mostrar_estudiante_optimizado proc
     mov ah, 09h
     int 21h
     
-    ; Mostrar nota
+    ; Mostrar nota con 5 decimales
     mov ah, 09h
     lea dx, msg_con_nota
     int 21h
     
-    ; Parte entera
-    mov al, [bx + 60]
-    call print_decimal
+    ; Parte entera (word)
+    mov ax, [bx + 60]
+    call print_decimal_word
     
     ; Punto decimal
     mov dl, '.'
     mov ah, 02h
     int 21h
     
-    ; Parte decimal
-    mov al, [bx + 61]
-    call mostrar_decimal
+    ; Parte decimal (5 dígitos)
+    lea si, [bx + 62]      ; Apuntar a decimales
+    call mostrar_5_decimales
     
     ; Nueva línea
     mov ah, 09h
@@ -780,7 +918,49 @@ mostrar_estudiante_optimizado proc
     pop bx 
     pop ax
     ret
-mostrar_estudiante_optimizado endp
+mostrar_estudiante_5_decimales endp
+
+
+print_decimal_word proc
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    mov bx, 10
+    xor cx, cx
+    mov dx, ax
+    
+    ; Caso especial para 0
+    test ax, ax
+    jnz convert_loop
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    jmp done_word
+    
+convert_loop:
+    xor dx, dx
+    div bx
+    push dx
+    inc cx
+    test ax, ax
+    jnz convert_loop
+    
+print_loop:
+    pop dx
+    add dl, '0'
+    mov ah, 02h
+    int 21h
+    loop print_loop
+    
+done_word:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+print_decimal_word endp
 
 ; Procedimiento para mostrar número
 mostrar_numero proc
@@ -920,52 +1100,31 @@ calcular_estadisticas proc
     push si 
     push di
     
-    ; Initialize variables
-    mov suma_entera, 0
-    mov suma_decimal, 0
+    ; Reinicializar variables
+    mov suma_total, 0
     mov aprobados, 0
     mov reprobados, 0
-    mov maxima_entera, 0
-    mov maxima_decimal, 0
-    mov minima_entera, 100
-    mov minima_decimal, 0
+    mov maxima, 0
+    mov minima, 10000
     
-    ; Set up pointer to estudiantes array
-    mov si, offset estudiantes
+    ; Verificar si hay estudiantes
     mov cl, contador
     mov ch, 0
-    jcxz fin_calculo           ; Salir si no hay estudiantes
+    jcxz fin_calculo
+    
+    mov si, offset estudiantes
     
 calcular_loop:
-    ; Obtener nota entera (offset 60)
-    mov al, [si + 60]
-    mov ah, 0
-    add suma_entera, ax
+    ; Convertir nota a formato de punto fijo (entera * 100 + decimales)
+    call convertir_nota_a_punto_fijo
+    ; AX ahora contiene la nota en formato: entera * 100 + decimales(2)
     
-    ; Obtener nota decimal (offset 61)  
-    mov al, [si + 61]
-    mov ah, 0
-    add suma_decimal, ax
+    ; Sumar al total
+    add suma_total, ax
     
-    ; Check for carry-over from decimal part
-    cmp suma_decimal, 100
-    jb no_carry
-    sub suma_decimal, 100
-    inc suma_entera
-    
-no_carry:
-    ; Check if student passed (nota >= 70)
-    mov al, [si + 60]          ; Parte entera
-    cmp al, 70
+    ; Verificar si está aprobado (>= 70.00)
+    cmp ax, 7000
     jb estudiante_reprobado
-    
-    ; If integer part is exactly 70, check decimal part
-    jne estudiante_aprobado
-    mov al, [si + 61]          ; Parte decimal
-    cmp al, 0
-    je estudiante_aprobado
-
-estudiante_aprobado:
     inc aprobados
     jmp check_max_min
     
@@ -973,56 +1132,32 @@ estudiante_reprobado:
     inc reprobados
     
 check_max_min:
-    ; Check for maximum grade
-    mov al, [si + 60]
-    cmp al, maxima_entera
-    jb check_minima
-    ja new_maxima
-    mov al, [si + 61]
-    cmp al, maxima_decimal
+    ; Verificar máxima
+    cmp ax, maxima
     jbe check_minima
-    
-new_maxima:
-    mov al, [si + 60]
-    mov maxima_entera, al
-    mov al, [si + 61]
-    mov maxima_decimal, al
+    mov maxima, ax
     
 check_minima:
-    ; Check for minimum grade
-    mov al, [si + 60]
-    cmp al, minima_entera
-    ja next_student
-    jb new_minima
-    mov al, [si + 61]
-    cmp al, minima_decimal
+    ; Verificar mínima
+    cmp ax, minima
     jae next_student
-    
-new_minima:
-    mov al, [si + 60]
-    mov minima_entera, al
-    mov al, [si + 61]
-    mov minima_decimal, al
+    mov minima, ax
     
 next_student:
-    add si, estudiante_size    ; Avanzar al siguiente estudiante
+    add si, estudiante_size
     loop calcular_loop
     
-    ; Calculate average
-    mov ax, suma_entera
+    ; Calcular promedio
+    mov ax, suma_total
     mov bl, contador
-    div bl
-    mov promedio_entera, al
+    mov bh, 0
+    div bx
+    mov promedio, ax
     
-    mov ax, suma_decimal
-    mov bl, contador
-    div bl
-    mov promedio_decimal, al
+    ; Mostrar resultados
+    call mostrar_estadisticas_simplificado
     
-    ; Display results
-    call mostrar_estadisticas
-    
-fin_calculo:                   ; ? ETIQUETA AÑADIDA
+fin_calculo:
     pop di
     pop si
     pop dx
@@ -1032,73 +1167,139 @@ fin_calculo:                   ; ? ETIQUETA AÑADIDA
     ret
 calcular_estadisticas endp
 
-; Procedimiento para mostrar estadísticas
-mostrar_estadisticas proc
+convertir_nota_a_punto_fijo proc
+    ; Convierte nota de estudiante a formato: entera * 100 + decimales(2)
+    ; Entrada: SI apunta al estudiante
+    ; Salida: AX = nota en punto fijo
+    
+    push bx
+    push cx
+    push dx
+    
+    ; Obtener parte entera (word)
+    mov ax, [si + 60]
+    
+    ; Multiplicar por 100 para los decimales
+    mov bx, 100
+    mul bx
+    mov bx, ax  ; Guardar resultado temporal
+    
+    ; Obtener los primeros 2 decimales (redondeando el tercero)
+    mov al, [si + 62]  ; Primer decimal
+    mov ah, 0
+    mov cl, 10
+    mul cl             ; * 10
+    mov cl, [si + 63]  ; Segundo decimal
+    add al, cl
+    adc ah, 0
+    
+    ; Redondear basado en el tercer decimal
+    mov cl, [si + 64]  ; Tercer decimal
+    cmp cl, 5
+    jb sin_redondeo
+    inc ax             ; Redondear hacia arriba
+    
+sin_redondeo:
+    ; Combinar con parte entera
+    add bx, ax
+    mov ax, bx
+    
+    pop dx
+    pop cx
+    pop bx
+    ret
+convertir_nota_a_punto_fijo endp
+
+mostrar_estadisticas_simplificado proc
     push ax
     push dx
     
-    ; Show sum
-    call mostrar_suma_corregida
+    ; Mostrar suma
+    mov dx, offset msg_suma
+    mov ah, 09h
+    int 21h
+    mov ax, suma_total
+    call mostrar_punto_fijo
     
-    ; Show average
+    ; Mostrar promedio
     mov dx, offset msg_promedio
     mov ah, 09h
     int 21h
+    mov ax, promedio
+    call mostrar_punto_fijo
     
-    mov al, promedio_entera
-    call print_decimal
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    mov al, promedio_decimal
-    call mostrar_decimal
-    
-    ; Show maximum grade
+    ; Mostrar máxima
     mov dx, offset msg_maxima
     mov ah, 09h
     int 21h
+    mov ax, maxima
+    call mostrar_punto_fijo
     
-    mov al, maxima_entera
-    call print_decimal
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    mov al, maxima_decimal
-    call mostrar_decimal
-    
-    ; Show minimum grade
+    ; Mostrar mínima
     mov dx, offset msg_minima
     mov ah, 09h
     int 21h
+    mov ax, minima
+    call mostrar_punto_fijo
     
-    mov al, minima_entera
-    call print_decimal
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    mov al, minima_decimal
-    call mostrar_decimal
-    
-    ; Show approved students count
+    ; Mostrar aprobados/reprobados
     mov dx, offset msg_aprobados
     mov ah, 09h
     int 21h
-    
     mov al, aprobados
     call print_decimal
     
-    ; Show failed students count
     mov dx, offset msg_reprobados
     mov ah, 09h
     int 21h
-    
     mov al, reprobados
     call print_decimal
     
     pop dx
     pop ax
     ret
-mostrar_estadisticas endp
+mostrar_estadisticas_simplificado endp
+
+mostrar_punto_fijo proc
+    ; Muestra número en formato punto fijo (AX = entera * 100 + decimales)
+    push ax
+    push bx
+    push dx
+    
+    ; Separar parte entera y decimal
+    mov bx, 100
+    xor dx, dx
+    div bx
+    ; AX = parte entera, DX = decimales (0-99)
+    
+    ; Mostrar parte entera
+    call print_decimal_word
+    
+    ; Mostrar punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Mostrar 2 decimales (si es necesario agregar leading zero)
+    mov ax, dx
+    cmp ax, 10
+    jae mostrar_decimales_normales
+    
+    ; Mostrar leading zero
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+    mov ax, dx
+    
+mostrar_decimales_normales:
+    call print_decimal_word
+    
+    pop dx
+    pop bx
+    pop ax
+    ret
+mostrar_punto_fijo endp
+
 
 ; Procedimiento para mostrar números decimales
 mostrar_decimal proc
@@ -1125,34 +1326,6 @@ mostrar_decimal proc
     pop ax
     ret
 mostrar_decimal endp
-
-; Procedimiento para mostrar suma
-mostrar_suma_corregida proc
-    push ax
-    push bx
-    push cx
-    push dx
-    
-    mov dx, offset msg_suma
-    mov ah, 09h
-    int 21h
-    
-    mov ax, suma_entera
-    call print_decimal
-    
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    
-    mov al, byte ptr suma_decimal
-    call mostrar_decimal
-    
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-mostrar_suma_corregida endp
 
 ; Procedimiento para imprimir número decimal
 print_decimal proc
@@ -1285,23 +1458,20 @@ mostrar_estudiante_por_indice proc
     push dx
     push si
     
-    ; Calcular offset del estudiante (ax ya contiene el índice)
-    mov bx, ax                  ; Guardar índice original
-    dec ax                      ; Ajustar a índice base 0
+    ; Calcular offset del estudiante
+    mov bx, ax
+    dec ax
     mov cl, estudiante_size
     mul cl
     mov si, offset estudiantes
-    add si, ax                  ; SI apunta al estudiante
+    add si, ax
     
-    ; Mostrar encabezado
+    ; Mostrar información básica
     mov dx, offset msg_estudiante_indice
     mov ah, 09h
     int 21h
-    
-    ; Mostrar el índice original (guardado en bx)
     mov al, bl
     call print_decimal
-    
     mov dx, offset msg_dos_puntos
     mov ah, 09h
     int 21h
@@ -1310,42 +1480,40 @@ mostrar_estudiante_por_indice proc
     mov dx, si
     mov ah, 09h
     int 21h
-    
     mov dl, ' '
     mov ah, 02h
     int 21h
     
     mov dx, si
-    add dx, 20              ; Apellido1
+    add dx, 20
     mov ah, 09h
     int 21h
-    
     mov dl, ' '
     mov ah, 02h
     int 21h
     
     mov dx, si
-    add dx, 40              ; Apellido2
+    add dx, 40
     mov ah, 09h
     int 21h
     
-    ; Mostrar nota
+    ; Mostrar nota con 5 decimales
     mov dx, offset msg_con_nota
     mov ah, 09h
     int 21h
     
     ; Parte entera
-    mov al, [si + 60]
-    call print_decimal
+    mov ax, [si + 60]
+    call print_decimal_word
     
     ; Punto decimal
     mov dl, '.'
     mov ah, 02h
     int 21h
     
-    ; Parte decimal
-    mov al, [si + 61]
-    call mostrar_decimal
+    ; 5 decimales
+    lea si, [si + 62]
+    call mostrar_5_decimales
     
     ; Nueva línea
     mov ah, 09h
@@ -1363,4 +1531,3 @@ mostrar_estudiante_por_indice endp
 end main
 
 main endp
-ocupo que me ayudes a reestructurar el codigo con el fin de manejarlo con 5 decimales en lugar de 2,  para conectar mejor lo demas quiero que se rellene con 0 en caso de que no alcance las cantidad maxima de decimales es decir 5 seria 5.00000 y 5.12 seria 5.12000
